@@ -1,0 +1,23 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+node_modules/
+dist/
+.env
+xcuserdata/
+DerivedData/
+__pycache__/
+.venv/
+
+# Data pulled from the NBA API and the local database (rebuildable, too big for git)
+data/raw/*
+!data/raw/.gitkeep
+*.duckdb
+*.duckdb.wal
+.ipynb_checkpoints/
