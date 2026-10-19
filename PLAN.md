@@ -64,13 +64,11 @@ Phases:
 
 ## Next
 
-1. Derek to run `coachmodel.coach_effects --task timeout` and look at the coach and stint effects.
-4. Foul-trouble audit, open questions: starters may be worth more in close late games; RAPM shrinkage understates starter-over-bench gaps (a prior from box-score stats would help); test Derek's targeting idea directly (do opponents shoot more at a player in foul trouble?).
-5. Timeouts during opponent runs (second Phase 3 problem). Win probability still lacks team strength and season home edge.
-6. Coach-level partial pooling (hierarchical model) and the first claim: does it beat the pooled model on held-out games?
-2. Finish downloading: 2024-25 stopped at 603 of 1,230 games when stats.nba.com blocked us; then 2021-22, 2022-23, 2023-24, 2025-26. Rerunning `coachmodel.ingest --season ...` resumes.
-4. Timeouts remaining in overtime, and the 4th-quarter limits (max 4 in Q4, max 2 after 3:00), so "timeouts remaining" means usable timeouts.
-5. Decide the classmate-facing piece (likely a small scout-report web page).
+1. **Classmate-facing page** (required by the course; also for the final video): a small scout report where you pick a coach and see his tendencies, foul-trouble audit, and charts. Platform and finish line to agree with Derek.
+2. Foul-trouble audit, open questions: starters may be worth more in close late games; RAPM shrinkage understates starter-over-bench gaps (a box-score prior would help); test Derek's targeting idea directly (do opponents attack a player in foul trouble?).
+3. Timeouts during opponent runs (second Phase 3 problem).
+4. Win probability: add team strength and each season's home edge.
+5. Timeouts remaining in overtime and the 4th-quarter limits (max 4 in Q4, max 2 after 3:00).
 
 ## Decisions
 
