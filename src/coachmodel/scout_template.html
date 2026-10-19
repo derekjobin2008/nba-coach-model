@@ -207,8 +207,9 @@ function foulSection(coach) {
     `Win probability per starter per game, compared with the same rotation ignoring fouls: ` +
     `${perGame >= 0 ? "+" : ""}${perGame.toFixed(3)} percentage points (95% range ${(foul.low * 100).toFixed(3)} to ` +
     `${(foul.high * 100).toFixed(3)}). Ranked ${ordinal(foul.cost_rank)} most costly of ${DATA.audited_coaches} ` +
-    `audited coaches. His starters are worth ${foul.value_over_bench.toFixed(1)} points per 48 minutes over his ` +
-    `bench, so benching them ${foul.value_over_bench < 1 ? "costs little" : "costs more"}. Season wins assume five similar starters.`));
+    `audited coaches. The cost grows with how much better his starters are than his bench: ` +
+    `${foul.value_over_bench.toFixed(1)} points per 48 minutes (league coaches range from about 0 to 7). ` +
+    `Season wins assume five similar starters.`));
   return section;
 }
 
