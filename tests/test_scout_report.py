@@ -77,9 +77,9 @@ def test_opens_on_the_coach_with_most_games_and_answers_both_questions():
     assert "Michael Malone" in card
     assert "Makes 53% more timeout calls than an average coach in the same situations." in card
     assert "His foul-trouble benching costs his team about 0.47 wins a season." in card
-    # "Clearly different" follows the long-run tendency range, not the wider season range.
-    assert "(short bar, 95%), clearly different from average." in card
-    assert "(short bar, 95%), not clearly different from average." in card  # substitutions: tendency crosses 1
+    # "Clearly different" follows the usual-habit range, not the wider one-season range.
+    assert "Clearly more than average · the most of 2 coaches" in card  # timeouts
+    assert "Not clearly different from average" in card  # substitutions: usual habit crosses average
 
 
 @needs_node
