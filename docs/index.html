@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bench Brain</title>
+<meta name="description" content="How NBA head coaches manage timeouts, substitutions, and foul trouble, compared with an average coach in the same game situations.">
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #ffffff; --ink: #1d1f23; --muted: #646a73; --line: #dfdcd3;
+    --accent: #c4512d; --accent-soft: #f3ddd4; --league: #8a8f98; --good: #2f7d5b; --bad: #b5402a;
+    --range: #c4512d33;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15171a; --card: #1e2125; --ink: #ecebe7; --muted: #a2a7ae; --line: #33373d;
+      --accent: #ec7a52; --accent-soft: #3a2820; --league: #7d838c; --good: #5fbf8f; --bad: #ef7a62;
+      --range: #ec7a5240;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171a; --card: #1e2125; --ink: #ecebe7; --muted: #a2a7ae; --line: #33373d;
+    --accent: #ec7a52; --accent-soft: #3a2820; --league: #7d838c; --good: #5fbf8f; --bad: #ef7a62;
+    --range: #ec7a5240;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 28px 16px 48px; }
+  header h1 { margin: 0; font-size: 2rem; letter-spacing: -0.02em; }
+  header p { margin: 6px 0 0; color: var(--muted); }
+  .picker { margin: 24px 0 16px; }
+  .picker label { display: block; font-weight: 600; margin-bottom: 6px; }
+  select {
+    width: 100%; font: inherit; font-size: 1.05rem; padding: 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .card h2 { margin: 0; font-size: 1.5rem; }
+  .teams-line { color: var(--muted); margin: 2px 0 0; }
+  section { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 16px; }
+  section h3 { margin: 0 0 4px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .headline { font-size: 1.2rem; font-weight: 600; margin: 4px 0; }
+  .detail { color: var(--muted); margin: 4px 0 0; font-size: 0.95rem; }
+  .axis { position: relative; height: 44px; margin: 14px 4px 4px; }
+  .axis .track { position: absolute; left: 0; right: 0; top: 20px; height: 2px; background: var(--line); }
+  .axis .others { position: absolute; top: 13px; width: 2px; height: 16px; background: var(--league); opacity: 0.45; }
+  .axis .range { position: absolute; top: 15px; height: 12px; border-radius: 6px; background: var(--range); }
+  .axis .dot { position: absolute; top: 13px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%;
+               background: var(--accent); border: 2px solid var(--card); }
+  .axis .average { position: absolute; top: 4px; width: 2px; height: 34px; margin-left: -1px; background: var(--ink); }
+  .axis .tick { position: absolute; top: 32px; transform: translateX(-50%); font-size: 0.75rem; color: var(--muted); }
+  .bars { display: grid; gap: 12px; margin-top: 12px; }
+  .bar-label { font-size: 0.95rem; margin-bottom: 4px; }
+  .bar-row { display: grid; grid-template-columns: 64px 1fr 44px; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); }
+  .bar { height: 12px; border-radius: 6px; background: var(--line); overflow: hidden; }
+  .bar span { display: block; height: 100%; border-radius: 6px; }
+  .verdict { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--accent-soft); }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.95rem; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
+  td.number, th.number { text-align: right; }
+  details { margin-top: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p, details li { color: var(--muted); }
+  footer { margin-top: 24px; color: var(--muted); font-size: 0.9rem; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Bench Brain</h1>
+    <p>How NBA head coaches manage timeouts, substitutions, and foul trouble, compared with an average coach in the same game situations.</p>
+    <p id="data-line"></p>
+  </header>
+
+  <div class="picker">
+    <label for="coach">Pick a coach</label>
+    <select id="coach"></select>
+  </div>
+
+  <article class="card" id="card" aria-live="polite"></article>
+
+  <details>
+    <summary>How to read this</summary>
+    <ul>
+      <li><strong>"In the same situations."</strong> Every comparison is against what an average NBA coach would have done in this coach's exact game situations: same score, clock, fouls, timeouts left, what just happened, and (for substitutions) the same players' minutes and fouls. A coach who trails a lot is not counted as "timeout-happy" just for trailing.</li>
+      <li><strong>Substitutions account for the roster.</strong> Stars rarely come out of games under any coach, so who a coach has is separated from how he uses them.</li>
+      <li><strong>95% ranges</strong> show how sure the numbers are. A coach with little data gets a wide range; a range that crosses "average" means he is not clearly different from an average coach.</li>
+      <li><strong>Foul trouble</strong> compares the coach's real habits with the same rotation if he ignored fouls, in a model of the game that measures each choice in win probability. It only counts how he handles foul trouble, not how many minutes he gives starters in general.</li>
+    </ul>
+  </details>
+
+  <details>
+    <summary>Method</summary>
+    <p>Data: every regular-season play-by-play from the NBA's public stats site, turned into decision events and game states in SQL (DuckDB). Timeouts and substitutions: a league-wide logistic regression for each decision, plus partially pooled coach, coach-team, and (for substitutions) player effects, fit by penalized maximum likelihood. The models beat the league-average model on a fully held-out season (2025-26). Ranges for coach effects use a Laplace approximation that holds team and player effects fixed, so they are slightly too narrow.</p>
+    <p>Foul trouble: a Markov decision process for one starter (minutes left, fouls, minutes played, score margin), solved by backward induction against a win-probability model calibrated to the data. Each coach's on-court shares by quarter and foul count are run through it for a starter worth what his starters are worth over his bench (regularized adjusted plus-minus). Ranges come from resampling his games. Coaches with fewer than 100 close games are not audited.</p>
+  </details>
+
+  <footer>Built by Derek Jobin. Code and full write-up: <a href="https://github.com/derekjobin2008/nba-coach-model">github.com/derekjobin2008/nba-coach-model</a></footer>
+</main>
+
+<script>
+const DATA = {"seasons":"2021-22 to 2025-26","games":6150,"audited_coaches":27,"league_foul_trouble":{"Q1 2 fouls":0.21472350871466872,"Q3 4 fouls":0.23601715291089695,"Q4 5 fouls":0.6552488218713093},"coaches":[{"name":"Adrian Griffin","games":43,"teams":[{"team":"MIL","games":43,"seasons":"2023-24","timeout_ratio":1.150531090808329,"substitution_ratio":1.0451960807946232}],"timeouts":{"ratio":1.1184517553731197,"low":0.9839596124494356,"high":1.2691943055856685,"decisions":181.0},"substitutions":{"ratio":1.0223277079224704,"low":0.9641095427283188,"high":1.0837501895029644,"decisions":906.0},"foul_trouble":null},{"name":"Alvin Gentry","games":65,"teams":[{"team":"SAC","games":65,"seasons":"2021-22","timeout_ratio":0.7274978945175791,"substitution_ratio":0.7592757595935958}],"timeouts":{"ratio":0.7747968744743567,"low":0.6833141041264609,"high":0.877358936605848,"decisions":186.0},"substitutions":{"ratio":0.8705887083899054,"low":0.8274700058650245,"high":0.915754033099276,"decisions":1214.0},"foul_trouble":null},{"name":"Billy Donovan","games":410,"teams":[{"team":"CHI","games":410,"seasons":"2021-22 to 2025-26","timeout_ratio":1.2927118831624844,"substitution_ratio":1.3564286100534642}],"timeouts":{"ratio":1.227473927165166,"low":1.1758027223027225,"high":1.2811446400302167,"decisions":1781.0},"substitutions":{"ratio":1.1634819715025024,"low":1.1420364023392797,"high":1.1852904471025416,"decisions":9760.0},"foul_trouble":{"close_games":208,"q1_2_fouls":0.30412356460896445,"q3_4_fouls":0.2824927095933312,"q4_5_fouls":0.6465103552786664,"cost_per_starter_game":-0.00025178210974141635,"low":-0.00037266508271876776,"high":-0.00013925505034995676,"season_wins":-0.1032306649939807,"value_over_bench":1.5464235908816923,"cost_rank":15}},{"name":"Brian Keefe","games":203,"teams":[{"team":"WAS","games":203,"seasons":"2023-24 to 2025-26","timeout_ratio":1.2417400534651515,"substitution_ratio":0.8782831431080304}],"timeouts":{"ratio":1.1887216557443576,"low":1.1182224518540116,"high":1.2631526034864498,"decisions":871.0},"substitutions":{"ratio":0.9369844258454472,"low":0.9108907574002478,"high":0.9637576194483797,"decisions":4190.0},"foul_trouble":null},{"name":"Charles Lee","games":164,"teams":[{"team":"CHA","games":164,"seasons":"2024-25 to 2025-26","timeout_ratio":1.0842076629905175,"substitution_ratio":1.3925150880830635}],"timeouts":{"ratio":1.0667713039609785,"low":0.9955551532244691,"high":1.1424803190377992,"decisions":677.0},"substitutions":{"ratio":1.1785755364116837,"low":1.1460177933583195,"high":1.2119606366580684,"decisions":4225.0},"foul_trouble":null},{"name":"Chauncey Billups","games":329,"teams":[{"team":"POR","games":329,"seasons":"2021-22 to 2025-26","timeout_ratio":0.8023189693174685,"substitution_ratio":0.8377270922061618}],"timeouts":{"ratio":0.8380783041225767,"low":0.7934137269259965,"high":0.8850090182590731,"decisions":1099.0},"substitutions":{"ratio":0.9149396655190678,"low":0.8941586099039075,"high":0.9361604129455804,"decisions":6383.0},"foul_trouble":{"close_games":157,"q1_2_fouls":0.20772545842259876,"q3_4_fouls":0.11689166167330489,"q4_5_fouls":0.6241386208569738,"cost_per_starter_game":-0.00022786371613936485,"low":-0.0003660277354521874,"high":-7.946224852971029e-05,"season_wins":-0.09342412361713959,"value_over_bench":1.1126981230110367,"cost_rank":16}},{"name":"Chris Finch","games":410,"teams":[{"team":"MIN","games":410,"seasons":"2021-22 to 2025-26","timeout_ratio":0.9360678550672551,"substitution_ratio":0.9333466128808822}],"timeouts":{"ratio":0.9484899302996052,"low":0.9035726823670936,"high":0.9954201823704837,"decisions":1417.0},"substitutions":{"ratio":0.9660443465905352,"low":0.9469337939129535,"high":0.9855043636320293,"decisions":8459.0},"foul_trouble":{"close_games":217,"q1_2_fouls":0.15837624578137627,"q3_4_fouls":0.13379399554662888,"q4_5_fouls":0.6228375309961148,"cost_per_starter_game":-0.00011324478096819135,"low":-0.00020284647781596555,"high":3.449651819215639e-05,"season_wins":-0.04643036019695845,"value_over_bench":1.2491160863471356,"cost_rank":22}},{"name":"Darko Rajakovic","games":246,"teams":[{"team":"TOR","games":246,"seasons":"2023-24 to 2025-26","timeout_ratio":1.4564015718564578,"substitution_ratio":1.1775609746277127}],"timeouts":{"ratio":1.3494877694850107,"low":1.2781508596456568,"high":1.4243253767651611,"decisions":1113.0},"substitutions":{"ratio":1.084825955015222,"low":1.0594524168668908,"high":1.1107473146787876,"decisions":5998.0},"foul_trouble":{"close_games":119,"q1_2_fouls":0.17134295346306833,"q3_4_fouls":0.12270763867838738,"q4_5_fouls":0.6316027811450626,"cost_per_starter_game":-0.0007424516017473515,"low":-0.0009311425076824253,"high":-0.0005014574761753597,"season_wins":-0.3044051567164141,"value_over_bench":2.3874142688538984,"cost_rank":5}},{"name":"Darvin Ham","games":164,"teams":[{"team":"LAL","games":164,"seasons":"2022-23 to 2023-24","timeout_ratio":0.8382203608747343,"substitution_ratio":1.1049887786563566}],"timeouts":{"ratio":0.8681038103641286,"low":0.802010318863276,"high":0.9391156619863912,"decisions":521.0},"substitutions":{"ratio":1.0510681834829414,"low":1.019224735962664,"high":1.0838124374028548,"decisions":3512.0},"foul_trouble":null},{"name":"David Adelman","games":85,"teams":[{"team":"DEN","games":85,"seasons":"2024-25 to 2025-26","timeout_ratio":1.168474657561769,"substitution_ratio":0.8927868893437367}],"timeouts":{"ratio":1.132452835124987,"low":1.0306633990463623,"high":1.2430832897967174,"decisions":354.0},"substitutions":{"ratio":0.9447359592391728,"low":0.903801244405791,"high":0.9873562778839987,"decisions":1641.0},"foul_trouble":null},{"name":"Doc Rivers","games":364,"teams":[{"team":"PHI","games":164,"seasons":"2021-22 to 2022-23","timeout_ratio":0.9109314001772886,"substitution_ratio":0.9958438392189217},{"team":"MIL","games":200,"seasons":"2023-24 to 2025-26","timeout_ratio":1.0560911664259147,"substitution_ratio":0.9286641091988623}],"timeouts":{"ratio":0.9829921305388011,"low":0.9344587002534395,"high":1.0337806359441284,"decisions":1298.0},"substitutions":{"ratio":0.9743587265347138,"low":0.9534367882562474,"high":0.9956975035868166,"decisions":7156.0},"foul_trouble":{"close_games":193,"q1_2_fouls":0.12889005782530905,"q3_4_fouls":0.2225401905473857,"q4_5_fouls":0.6262550149685356,"cost_per_starter_game":-0.0005530814330940714,"low":-0.0008235126534861414,"high":-0.00024405273009119033,"season_wins":-0.22676338756856929,"value_over_bench":3.674519177648037,"cost_rank":7}},{"name":"Doug Christie","games":133,"teams":[{"team":"SAC","games":133,"seasons":"2024-25 to 2025-26","timeout_ratio":1.1841826839417104,"substitution_ratio":1.1607084837728456}],"timeouts":{"ratio":1.1445637068303247,"low":1.0601344527989058,"high":1.2349123282842198,"decisions":546.0},"substitutions":{"ratio":1.0771110358981328,"low":1.0401244753164847,"high":1.115292801814275,"decisions":2715.0},"foul_trouble":null},{"name":"Dwane Casey","games":164,"teams":[{"team":"DET","games":164,"seasons":"2021-22 to 2022-23","timeout_ratio":0.7253395803811608,"substitution_ratio":0.701580301191983}],"timeouts":{"ratio":0.772790133492919,"low":0.7132703749904759,"high":0.8368121900433986,"decisions":501.0},"substitutions":{"ratio":0.8363959304486305,"low":0.8084661706213118,"high":0.8652103541000682,"decisions":2891.0},"foul_trouble":null},{"name":"Erik Spoelstra","games":410,"teams":[{"team":"MIA","games":410,"seasons":"2021-22 to 2025-26","timeout_ratio":0.8789827681270397,"substitution_ratio":0.7898699720453527}],"timeouts":{"ratio":0.9018107815092371,"low":0.858676641296059,"high":0.9468897696591246,"decisions":1377.0},"substitutions":{"ratio":0.8881534395290682,"low":0.8699605941573245,"high":0.906692583824291,"decisions":7918.0},"foul_trouble":{"close_games":234,"q1_2_fouls":0.16698106900671145,"q3_4_fouls":0.20915968937156226,"q4_5_fouls":0.6039461805366718,"cost_per_starter_game":-0.0012081908019798693,"low":-0.0015924356049116712,"high":-0.0008974583458234013,"season_wins":-0.4953582288117464,"value_over_bench":4.03094386073621,"cost_rank":1}},{"name":"Frank Vogel","games":164,"teams":[{"team":"LAL","games":82,"seasons":"2021-22","timeout_ratio":1.5812192453679734,"substitution_ratio":1.102391565704365},{"team":"PHX","games":82,"seasons":"2023-24","timeout_ratio":1.4114311852656514,"substitution_ratio":1.212092758008113}],"timeouts":{"ratio":1.427289098957602,"low":1.3375742191182765,"high":1.5222603199988134,"decisions":768.0},"substitutions":{"ratio":1.1013596630279214,"low":1.0690685080342972,"high":1.134527712831448,"decisions":3735.0},"foul_trouble":null},{"name":"Gregg Popovich","games":251,"teams":[{"team":"SAS","games":251,"seasons":"2021-22 to 2024-25","timeout_ratio":1.2024572168346992,"substitution_ratio":1.3012659545901986}],"timeouts":{"ratio":1.158632550594235,"low":1.096878528440417,"high":1.223447061587515,"decisions":1081.0},"substitutions":{"ratio":1.13985285944827,"low":1.1137732016140438,"high":1.166482326592628,"decisions":6242.0},"foul_trouble":{"close_games":126,"q1_2_fouls":0.06479213611573757,"q3_4_fouls":0.051545224975419274,"q4_5_fouls":0.7369852821502476,"cost_per_starter_game":-6.513952988340677e-05,"low":-0.00012445278617379817,"high":-6.667878753727185e-06,"season_wins":-0.026707207252196774,"value_over_bench":0.5753791116324596,"cost_rank":24}},{"name":"Ime Udoka","games":328,"teams":[{"team":"BOS","games":82,"seasons":"2021-22","timeout_ratio":0.9088993528589253,"substitution_ratio":0.9094604747093947},{"team":"HOU","games":246,"seasons":"2023-24 to 2025-26","timeout_ratio":0.8323608373884915,"substitution_ratio":1.2318791695234015}],"timeouts":{"ratio":0.8832481323982223,"low":0.8345465576621647,"high":0.9345072322010334,"decisions":1025.0},"substitutions":{"ratio":1.0385293214847455,"low":1.0164911482076515,"high":1.0609974327266696,"decisions":7257.0},"foul_trouble":{"close_games":181,"q1_2_fouls":0.12621228238590665,"q3_4_fouls":0.17201061481235067,"q4_5_fouls":0.7098830199445931,"cost_per_starter_game":-0.00021216547808056152,"low":-0.00028993950977145575,"high":-0.00010390298001118621,"season_wins":-0.08698784601303022,"value_over_bench":1.0191898693825459,"cost_rank":17}},{"name":"J.B. Bickerstaff","games":410,"teams":[{"team":"CLE","games":246,"seasons":"2021-22 to 2023-24","timeout_ratio":0.7722873589113367,"substitution_ratio":1.0598429706123347},{"team":"DET","games":164,"seasons":"2024-25 to 2025-26","timeout_ratio":0.9390891886248842,"substitution_ratio":1.2307345969834118}],"timeouts":{"ratio":0.866835042553973,"low":0.8231790541837705,"high":0.9125804360998444,"decisions":1241.0},"substitutions":{"ratio":1.0923106981741542,"low":1.072108859241786,"high":1.1128552592459884,"decisions":9645.0},"foul_trouble":{"close_games":224,"q1_2_fouls":0.16524222989359982,"q3_4_fouls":0.22032340453221846,"q4_5_fouls":0.6163083814766144,"cost_per_starter_game":-0.0003750209241820679,"low":-0.0005784488427914541,"high":-0.0001913913188646782,"season_wins":-0.15375857891464784,"value_over_bench":2.527078733737603,"cost_rank":12}},{"name":"JJ Redick","games":164,"teams":[{"team":"LAL","games":164,"seasons":"2024-25 to 2025-26","timeout_ratio":0.8448200186040741,"substitution_ratio":1.199848898574798}],"timeouts":{"ratio":0.8735915907663685,"low":0.8058087976652845,"high":0.9465285873611657,"decisions":498.0},"substitutions":{"ratio":1.094974063204212,"low":1.0623720744054486,"high":1.128479481719868,"decisions":3632.0},"foul_trouble":null},{"name":"Jacque Vaughn","games":129,"teams":[{"team":"BKN","games":129,"seasons":"2022-23 to 2023-24","timeout_ratio":0.9040216745098707,"substitution_ratio":0.9198962716096399}],"timeouts":{"ratio":0.9223598139038475,"low":0.8455828078810594,"high":1.0053975209702033,"decisions":419.0},"substitutions":{"ratio":0.9590291696994038,"low":0.9265182866674716,"high":0.9925672755936065,"decisions":2742.0},"foul_trouble":null},{"name":"Jamahl Mosley","games":410,"teams":[{"team":"ORL","games":410,"seasons":"2021-22 to 2025-26","timeout_ratio":0.8991561055810192,"substitution_ratio":0.8962812255172303}],"timeouts":{"ratio":0.9183973092689618,"low":0.8749451026292867,"high":0.9637863682244742,"decisions":1413.0},"substitutions":{"ratio":0.9465873475291279,"low":0.9277079085079587,"high":0.9658154605037319,"decisions":8323.0},"foul_trouble":{"close_games":215,"q1_2_fouls":0.34139331578833726,"q3_4_fouls":0.38786414127443986,"q4_5_fouls":0.6969352624353152,"cost_per_starter_game":-0.0001409774381682105,"low":-0.00028038991961651106,"high":3.510700238292536e-05,"season_wins":-0.05780074964896631,"value_over_bench":2.896213291178711,"cost_rank":21}},{"name":"James Borrego","games":152,"teams":[{"team":"CHA","games":82,"seasons":"2021-22","timeout_ratio":1.082622178707851,"substitution_ratio":1.009461183501454},{"team":"NOP","games":70,"seasons":"2025-26","timeout_ratio":1.3148342840709322,"substitution_ratio":1.126142492787867}],"timeouts":{"ratio":1.168850768425376,"low":1.0883662341310998,"high":1.2545986464776135,"decisions":637.0},"substitutions":{"ratio":1.043644536982101,"low":1.010805308187588,"high":1.077450426784411,"decisions":3251.0},"foul_trouble":null},{"name":"Jason Kidd","games":410,"teams":[{"team":"DAL","games":410,"seasons":"2021-22 to 2025-26","timeout_ratio":0.839575279427527,"substitution_ratio":1.2343633905808753}],"timeouts":{"ratio":0.8691835041435095,"low":0.8267663559866268,"high":0.9135618205422943,"decisions":1328.0},"substitutions":{"ratio":1.110450120786855,"low":1.0898980557799915,"high":1.1313505467402902,"decisions":9590.0},"foul_trouble":{"close_games":238,"q1_2_fouls":0.16053339720198934,"q3_4_fouls":0.228267445224756,"q4_5_fouls":0.5628355902459466,"cost_per_starter_game":-0.0006121942719539142,"low":-0.0008153805005658654,"high":-0.0003824764813395359,"season_wins":-0.2509996515011048,"value_over_bench":3.272341266386864,"cost_rank":6}},{"name":"Joe Mazzulla","games":328,"teams":[{"team":"BOS","games":328,"seasons":"2022-23 to 2025-26","timeout_ratio":0.6934680748448536,"substitution_ratio":0.8835919638255001}],"timeouts":{"ratio":0.7452940868697525,"low":0.7008380252443478,"high":0.7923135395820152,"decisions":867.0},"substitutions":{"ratio":0.9398301304178174,"low":0.9182910726440542,"high":0.9618289607560072,"decisions":6275.0},"foul_trouble":{"close_games":164,"q1_2_fouls":0.21329904154067597,"q3_4_fouls":0.2544996981271931,"q4_5_fouls":0.5569453629750216,"cost_per_starter_game":-0.0003964450687020671,"low":-0.0005425976360364099,"high":-0.0002456329006887442,"season_wins":-0.1625424781678475,"value_over_bench":1.6940146653373698,"cost_rank":11}},{"name":"Jordan Ott","games":82,"teams":[{"team":"PHX","games":82,"seasons":"2025-26","timeout_ratio":1.1611653698901427,"substitution_ratio":1.2509794255192561}],"timeouts":{"ratio":1.126771167913168,"low":1.0239547239425861,"high":1.2386669048760468,"decisions":338.0},"substitutions":{"ratio":1.1178036113696261,"low":1.0742654408843908,"high":1.1629175009915935,"decisions":2042.0},"foul_trouble":null},{"name":"Jordi Fernandez","games":164,"teams":[{"team":"BKN","games":164,"seasons":"2024-25 to 2025-26","timeout_ratio":1.1358315990810914,"substitution_ratio":1.0040612126689514}],"timeouts":{"ratio":1.1071407119920231,"low":1.0324716006950558,"high":1.186596419162231,"decisions":659.0},"substitutions":{"ratio":1.0020283576039284,"low":0.9726085961305184,"high":1.0322529229808448,"decisions":3746.0},"foul_trouble":null},{"name":"Kenny Atkinson","games":164,"teams":[{"team":"CLE","games":164,"seasons":"2024-25 to 2025-26","timeout_ratio":1.0172359126377528,"substitution_ratio":1.2751054314894323}],"timeouts":{"ratio":1.0137650794778177,"low":0.9400076867023538,"high":1.0926869693646892,"decisions":567.0},"substitutions":{"ratio":1.128488437746061,"low":1.0959979981315107,"high":1.1618491398585011,"decisions":3906.0},"foul_trouble":null},{"name":"Mark Daigneault","games":410,"teams":[{"team":"OKC","games":410,"seasons":"2021-22 to 2025-26","timeout_ratio":1.2482069711490633,"substitution_ratio":1.141075751226394}],"timeouts":{"ratio":1.1936060152926995,"low":1.14160164829236,"high":1.2477047298426354,"decisions":1663.0},"substitutions":{"ratio":1.0679795334869944,"low":1.048283047979166,"high":1.0880067638249096,"decisions":9617.0},"foul_trouble":{"close_games":195,"q1_2_fouls":0.43425956307745445,"q3_4_fouls":0.4543248106456877,"q4_5_fouls":0.7241129978697488,"cost_per_starter_game":-3.267672286499934e-05,"low":-0.00019152387610829602,"high":0.0001339610481274541,"season_wins":-0.01339745637464973,"value_over_bench":2.980643852018477,"cost_rank":26}},{"name":"Michael Malone","games":325,"teams":[{"team":"DEN","games":325,"seasons":"2021-22 to 2024-25","timeout_ratio":1.3893984127170436,"substitution_ratio":1.0325257412777935}],"timeouts":{"ratio":1.2999734301674424,"low":1.2373179599555495,"high":1.3654390717313964,"decisions":1354.0},"substitutions":{"ratio":1.0161214170662076,"low":0.9932584720282901,"high":1.0394633275933254,"decisions":6558.0},"foul_trouble":{"close_games":166,"q1_2_fouls":0.08264944803166008,"q3_4_fouls":0.07860599610433947,"q4_5_fouls":0.8124232815057283,"cost_per_starter_game":-0.0010642886972864751,"low":-0.0015243963406632616,"high":-0.0005251892332992252,"season_wins":-0.4363583658874548,"value_over_bench":6.761656566671629,"cost_rank":2}},{"name":"Mike Brown","games":277,"teams":[{"team":"SAC","games":195,"seasons":"2022-23 to 2024-25","timeout_ratio":1.111167017572393,"substitution_ratio":1.4177292432707613},{"team":"NYK","games":82,"seasons":"2025-26","timeout_ratio":1.026599306297167,"substitution_ratio":1.487409376077162}],"timeouts":{"ratio":1.0601977701652463,"low":1.0025030447362753,"high":1.1208486897830274,"decisions":1048.0},"substitutions":{"ratio":1.2811269488307906,"low":1.2534590678724096,"high":1.3093425298567405,"decisions":6997.0},"foul_trouble":{"close_games":145,"q1_2_fouls":0.2545656644847417,"q3_4_fouls":0.17883792916046404,"q4_5_fouls":0.7910033393964309,"cost_per_starter_game":-0.00010120782956180019,"low":-0.0002656431229913048,"high":6.859783274737752e-05,"season_wins":-0.04149521012033808,"value_over_bench":1.8875654417281509,"cost_rank":23}},{"name":"Mike Budenholzer","games":246,"teams":[{"team":"MIL","games":164,"seasons":"2021-22 to 2022-23","timeout_ratio":0.6961973438178689,"substitution_ratio":1.4142920541093331},{"team":"PHX","games":82,"seasons":"2024-25","timeout_ratio":0.775516816880155,"substitution_ratio":1.3484950030029317}],"timeouts":{"ratio":0.7598216066650892,"low":0.7074453779917144,"high":0.8157468520839941,"decisions":652.0},"substitutions":{"ratio":1.238810513009776,"low":1.2101289982866819,"high":1.268101449295635,"decisions":6094.0},"foul_trouble":{"close_games":128,"q1_2_fouls":0.17351476280461675,"q3_4_fouls":0.24301786493258806,"q4_5_fouls":0.6220091239176985,"cost_per_starter_game":-0.0007500907259792022,"low":-0.0010651706734402578,"high":-0.0004009357149032941,"season_wins":-0.3075371976514729,"value_over_bench":3.3062725433308926,"cost_rank":4}},{"name":"Mitch Johnson","games":159,"teams":[{"team":"SAS","games":159,"seasons":"2024-25 to 2025-26","timeout_ratio":1.3261314316903672,"substitution_ratio":1.421187244483777}],"timeouts":{"ratio":1.252605177532199,"low":1.1690456738116959,"high":1.3414289534965225,"decisions":680.0},"substitutions":{"ratio":1.1905071279152202,"low":1.156758271043728,"high":1.2251390637578252,"decisions":4005.0},"foul_trouble":null},{"name":"Monty Williams","games":246,"teams":[{"team":"PHX","games":164,"seasons":"2021-22 to 2022-23","timeout_ratio":0.6455297080919036,"substitution_ratio":0.9359254909043695},{"team":"DET","games":82,"seasons":"2023-24","timeout_ratio":0.765012662087552,"substitution_ratio":0.9798650011073916}],"timeouts":{"ratio":0.7303288376620359,"low":0.6824222051263306,"high":0.7812800470349869,"decisions":710.0},"substitutions":{"ratio":0.9715327035092427,"low":0.9472851512297092,"high":0.9963406845096755,"decisions":5227.0},"foul_trouble":{"close_games":122,"q1_2_fouls":0.2648693333588184,"q3_4_fouls":0.16042543423368277,"q4_5_fouls":0.5564254624955707,"cost_per_starter_game":-0.0005027446734415797,"low":-0.0007761171506011216,"high":-0.00018556917456293007,"season_wins":-0.20612531611104767,"value_over_bench":2.495906019730184,"cost_rank":8}},{"name":"Nate McMillan","games":141,"teams":[{"team":"ATL","games":141,"seasons":"2021-22 to 2022-23","timeout_ratio":0.8796241514178118,"substitution_ratio":0.9014049766217801}],"timeouts":{"ratio":0.9023495929157666,"low":0.8314505586697885,"high":0.9786787200175404,"decisions":479.0},"substitutions":{"ratio":0.9493090679483548,"low":0.9167391944799465,"high":0.9829331024982964,"decisions":2725.0},"foul_trouble":null},{"name":"Nick Nurse","games":410,"teams":[{"team":"TOR","games":164,"seasons":"2021-22 to 2022-23","timeout_ratio":0.6859656559836242,"substitution_ratio":0.6927029506932161},{"team":"PHI","games":246,"seasons":"2023-24 to 2025-26","timeout_ratio":0.6762160544649336,"substitution_ratio":0.927544996601442}],"timeouts":{"ratio":0.7103239924054927,"low":0.6727481470286729,"high":0.7498067833986963,"decisions":1129.0},"substitutions":{"ratio":0.8621130161395133,"low":0.8438397473431957,"high":0.880747670680727,"decisions":7400.0},"foul_trouble":{"close_games":219,"q1_2_fouls":0.19395386226888503,"q3_4_fouls":0.37310574823818166,"q4_5_fouls":0.7513238566404902,"cost_per_starter_game":-0.00025229687257455335,"low":-0.0004174550725505294,"high":-4.893489370436091e-05,"season_wins":-0.10344171775556688,"value_over_bench":2.00368915484975,"cost_rank":14}},{"name":"Quin Snyder","games":349,"teams":[{"team":"UTA","games":82,"seasons":"2021-22","timeout_ratio":0.9443527131572216,"substitution_ratio":1.1068966696882008},{"team":"ATL","games":267,"seasons":"2022-23 to 2025-26","timeout_ratio":0.9388064420935661,"substitution_ratio":1.1960842737331445}],"timeouts":{"ratio":0.9479113289619454,"low":0.9009538320456552,"high":0.99704949933842,"decisions":1278.0},"substitutions":{"ratio":1.0978857586588848,"low":1.0755073861451423,"high":1.1206865657411311,"decisions":7981.0},"foul_trouble":{"close_games":185,"q1_2_fouls":0.2191627062785088,"q3_4_fouls":0.17153531514702566,"q4_5_fouls":0.7493366630248166,"cost_per_starter_game":-0.00018438568734380212,"low":-0.0003129332679521729,"high":-7.2592241555397e-05,"season_wins":-0.07559813181095887,"value_over_bench":1.4513819111842508,"cost_rank":19}},{"name":"Rick Carlisle","games":410,"teams":[{"team":"IND","games":410,"seasons":"2021-22 to 2025-26","timeout_ratio":1.7058105854421215,"substitution_ratio":1.1674011431259115}],"timeouts":{"ratio":1.5300317238822285,"low":1.4692077281490936,"high":1.5930642093363991,"decisions":1994.0},"substitutions":{"ratio":1.0801701884089145,"low":1.0603505162620923,"high":1.1003241785959395,"decisions":9856.0},"foul_trouble":{"close_games":224,"q1_2_fouls":0.03348794809233986,"q3_4_fouls":0.08193260526202578,"q4_5_fouls":0.6838244836303422,"cost_per_starter_game":-0.00045334165515120706,"low":-0.0006888368263151424,"high":-0.0002060829831232346,"season_wins":-0.1858700786119949,"value_over_bench":2.5075006926486543,"cost_rank":10}},{"name":"Stephen Silas","games":164,"teams":[{"team":"HOU","games":164,"seasons":"2021-22 to 2022-23","timeout_ratio":0.7911897591117049,"substitution_ratio":0.7928758745866039}],"timeouts":{"ratio":0.8287399453304423,"low":0.7661106216512945,"high":0.8959832582588897,"decisions":526.0},"substitutions":{"ratio":0.8898400558206488,"low":0.8621668198367071,"high":0.9183175576350205,"decisions":3292.0},"foul_trouble":null},{"name":"Steve Clifford","games":164,"teams":[{"team":"CHA","games":164,"seasons":"2022-23 to 2023-24","timeout_ratio":0.8603411997524584,"substitution_ratio":1.0548241059977452}],"timeouts":{"ratio":0.8864252902032475,"low":0.8233506764683898,"high":0.9538069886820395,"decisions":588.0},"substitutions":{"ratio":1.0270134107033932,"low":0.9953937210294008,"high":1.059542886762519,"decisions":3391.0},"foul_trouble":null},{"name":"Steve Kerr","games":410,"teams":[{"team":"GSW","games":410,"seasons":"2021-22 to 2025-26","timeout_ratio":1.2526035247396756,"substitution_ratio":1.3112652983354107}],"timeouts":{"ratio":1.1970216584653468,"low":1.1446732440010772,"high":1.2514973944337486,"decisions":1663.0},"substitutions":{"ratio":1.1441314854412028,"low":1.1238778474149214,"high":1.1647122570745783,"decisions":10489.0},"foul_trouble":{"close_games":223,"q1_2_fouls":0.26351011616477815,"q3_4_fouls":0.3188033954745203,"q4_5_fouls":0.6933279410677555,"cost_per_starter_game":-0.000207986581832742,"low":-0.0003999141130040434,"high":-2.1751429111635326e-05,"season_wins":-0.08527449855142422,"value_over_bench":2.4176134087383923,"cost_rank":18}},{"name":"Steve Nash","games":89,"teams":[{"team":"BKN","games":89,"seasons":"2021-22 to 2022-23","timeout_ratio":0.7430527810784454,"substitution_ratio":0.8647518432935803}],"timeouts":{"ratio":0.7880625483247083,"low":0.7079618005789746,"high":0.876312648048688,"decisions":265.0},"substitutions":{"ratio":0.9296729501245354,"low":0.89152163239935,"high":0.9692940915266833,"decisions":1811.0},"foul_trouble":null},{"name":"Taylor Jenkins","games":319,"teams":[{"team":"MEM","games":319,"seasons":"2021-22 to 2024-25","timeout_ratio":1.3458657045058582,"substitution_ratio":1.0320396961050606}],"timeouts":{"ratio":1.267456900547166,"low":1.206734799334979,"high":1.3308817814027618,"decisions":1365.0},"substitutions":{"ratio":1.015881380827563,"low":0.9947555428955569,"high":1.0374113306028088,"decisions":7592.0},"foul_trouble":{"close_games":151,"q1_2_fouls":0.045803834483971684,"q3_4_fouls":0.13487604644335793,"q4_5_fouls":0.5718844568775757,"cost_per_starter_game":-0.0003639576471325956,"low":-0.000660409935044018,"high":-1.69457002172912e-05,"season_wins":-0.1492226353243642,"value_over_bench":3.0654385151988692,"cost_rank":13}},{"name":"Tiago Splitter","games":81,"teams":[{"team":"POR","games":81,"seasons":"2025-26","timeout_ratio":1.063690780257216,"substitution_ratio":1.2202592459740893}],"timeouts":{"ratio":1.050596767376331,"low":0.952093697187916,"high":1.1580997616624777,"decisions":320.0},"substitutions":{"ratio":1.104122787176172,"low":1.0621272516398064,"high":1.1476000048503885,"decisions":2142.0},"foul_trouble":null},{"name":"Tom Thibodeau","games":328,"teams":[{"team":"NYK","games":328,"seasons":"2021-22 to 2024-25","timeout_ratio":0.8697404305434385,"substitution_ratio":0.6909277855636579}],"timeouts":{"ratio":0.8942088089542167,"low":0.8413791808284381,"high":0.9500616428085604,"decisions":906.0},"substitutions":{"ratio":0.829924125435677,"low":0.8093476961118241,"high":0.8509809467429154,"decisions":5400.0},"foul_trouble":{"close_games":164,"q1_2_fouls":0.20917150283049096,"q3_4_fouls":0.31488782816229116,"q4_5_fouls":0.5860286074632842,"cost_per_starter_game":-4.444755394183986e-05,"low":-8.40003374174697e-05,"high":-1.7210414675615485e-07,"season_wins":-0.01822349711615434,"value_over_bench":0.43687430139056177,"cost_rank":25}},{"name":"Tuomas Iisalo","games":91,"teams":[{"team":"MEM","games":91,"seasons":"2024-25 to 2025-26","timeout_ratio":1.1596166583977192,"substitution_ratio":1.504910408144548}],"timeouts":{"ratio":1.1256152826901205,"low":1.027413380704805,"high":1.232086910823429,"decisions":378.0},"substitutions":{"ratio":1.2243182105634722,"low":1.1821998194941812,"high":1.2677677227708772,"decisions":2641.0},"foul_trouble":null},{"name":"Tyronn Lue","games":410,"teams":[{"team":"LAC","games":410,"seasons":"2021-22 to 2025-26","timeout_ratio":1.1023286898371505,"substitution_ratio":0.8056788390045067}],"timeouts":{"ratio":1.081025624598844,"low":1.0332192783944956,"high":1.1307890581267912,"decisions":1605.0},"substitutions":{"ratio":0.8971100502269432,"low":0.8782963634289433,"high":0.9162915644824485,"decisions":7592.0},"foul_trouble":{"close_games":203,"q1_2_fouls":0.18559839053130758,"q3_4_fouls":0.26992236269965414,"q4_5_fouls":0.6646361700071837,"cost_per_starter_game":-0.000788065692493567,"low":-0.00110269219921707,"high":-0.0005230733269173726,"season_wins":-0.32310693392236245,"value_over_bench":3.464804662793409,"cost_rank":3}},{"name":"Wes Unseld Jr.","games":207,"teams":[{"team":"WAS","games":207,"seasons":"2021-22 to 2023-24","timeout_ratio":1.208029522333523,"substitution_ratio":0.9210121958004347}],"timeouts":{"ratio":1.1629250683003405,"low":1.0943709708386598,"high":1.2352724363472458,"decisions":883.0},"substitutions":{"ratio":0.9596160272533573,"low":0.9337607033198551,"high":0.9861190548597497,"decisions":4464.0},"foul_trouble":{"close_games":117,"q1_2_fouls":0.2418182656259603,"q3_4_fouls":0.18360399516127307,"q4_5_fouls":0.7689240365337491,"cost_per_starter_game":0.0,"low":-1.1102230246251565e-16,"high":1.6653345369377348e-16,"season_wins":0.0,"value_over_bench":0.0,"cost_rank":27}},{"name":"Will Hardy","games":328,"teams":[{"team":"UTA","games":328,"seasons":"2022-23 to 2025-26","timeout_ratio":0.7065120582803887,"substitution_ratio":0.8495617931215522}],"timeouts":{"ratio":0.7564811904259322,"low":0.7156802127763088,"high":0.7993733356133373,"decisions":1070.0},"substitutions":{"ratio":0.9214411009481711,"low":0.9005444755549942,"high":0.9427805961663492,"decisions":6456.0},"foul_trouble":{"close_games":168,"q1_2_fouls":0.3082617329584554,"q3_4_fouls":0.2784967773412423,"q4_5_fouls":0.6155777534875163,"cost_per_starter_game":-0.00014656093696385764,"low":-0.00027192093589650524,"high":-2.4533789864761244e-05,"season_wins":-0.06008998415518163,"value_over_bench":1.3470349184113302,"cost_rank":20}},{"name":"Willie Green","games":340,"teams":[{"team":"NOP","games":340,"seasons":"2021-22 to 2025-26","timeout_ratio":0.8456704449799495,"substitution_ratio":1.0384498793611108}],"timeouts":{"ratio":0.8742761677725953,"low":0.8275202167789681,"high":0.9234126032815869,"decisions":1099.0},"substitutions":{"ratio":1.0190269685297952,"low":0.9974002238783041,"high":1.0410781757483056,"decisions":7318.0},"foul_trouble":{"close_games":159,"q1_2_fouls":0.049715202360732236,"q3_4_fouls":0.11830273165190065,"q4_5_fouls":0.6290339899068228,"cost_per_starter_game":-0.00046882807190085085,"low":-0.0006694269853758789,"high":-0.000273457117711165,"season_wins":-0.19221950947934885,"value_over_bench":2.3074139097642052,"cost_rank":9}}]};
+
+const AXIS_MIN = 0.5, AXIS_MAX = 2.0;  // ratio axis, log scale: half as often to twice as often
+
+function axisPosition(ratio) {
+  const clamped = Math.min(Math.max(ratio, AXIS_MIN), AXIS_MAX);
+  return (Math.log(clamped) - Math.log(AXIS_MIN)) / (Math.log(AXIS_MAX) - Math.log(AXIS_MIN)) * 100;
+}
+
+function moreOrFewer(ratio, noun) {
+  const change = Math.round(Math.abs(ratio - 1) * 100);
+  if (change === 0) return `about as many ${noun} as`;
+  return `${change}% ${ratio > 1 ? "more" : "fewer"} ${noun} than`;
+}
+
+function signedPercent(ratio) {
+  const change = Math.round((ratio - 1) * 100);
+  return `${change > 0 ? "+" : ""}${change}%`;
+}
+
+function ordinal(n) {
+  const suffix = (n % 100 >= 11 && n % 100 <= 13) ? "th" : ({1: "st", 2: "nd", 3: "rd"}[n % 10] || "th");
+  return `${n}${suffix}`;
+}
+
+function element(tag, attributes = {}, text = "") {
+  const node = document.createElement(tag);
+  Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, value));
+  if (text) node.textContent = text;
+  return node;
+}
+
+function ratioAxis(ratio, low, high, everyone, label) {
+  const axis = element("div", {class: "axis", role: "img", "aria-label": label});
+  axis.append(element("div", {class: "track"}));
+  everyone.forEach(other => {
+    axis.append(element("div", {class: "others", style: `left:${axisPosition(other)}%`}));
+  });
+  axis.append(element("div", {class: "range",
+    style: `left:${axisPosition(low)}%;width:${axisPosition(high) - axisPosition(low)}%`}));
+  axis.append(element("div", {class: "average", style: `left:${axisPosition(1)}%`}));
+  axis.append(element("div", {class: "dot", style: `left:${axisPosition(ratio)}%`}));
+  [[0.5, "half"], [1, "average"], [2, "double"]].forEach(([value, name]) => {
+    axis.append(element("div", {class: "tick", style: `left:${axisPosition(value)}%`}, name));
+  });
+  return axis;
+}
+
+function decisionSection(title, noun, stats, everyone, note) {
+  const section = element("section");
+  section.append(element("h3", {}, title));
+  const known = stats.low > 1 || stats.high < 1;
+  section.append(element("p", {class: "headline"},
+    `Makes ${moreOrFewer(stats.ratio, noun)} an average coach in the same situations.`));
+  const rank = everyone.filter(other => other > stats.ratio).length + 1;
+  section.append(ratioAxis(stats.ratio, stats.low, stats.high, everyone,
+    `${title}: ${signedPercent(stats.ratio)} versus average`));
+  section.append(element("p", {class: "detail"},
+    `95% range ${signedPercent(stats.low)} to ${signedPercent(stats.high)}` +
+    (known ? "" : " (not clearly different from average)") +
+    `. Ranks ${ordinal(rank)} of ${everyone.length} coaches, most to fewest. Grey ticks are the other coaches. ${note}`));
+  return section;
+}
+
+function shareBar(label, coachShare, leagueShare) {
+  const wrapper = element("div");
+  wrapper.append(element("div", {class: "bar-label"}, label));
+  [["him", coachShare, "var(--accent)"], ["league", leagueShare, "var(--league)"]].forEach(([who, share, color]) => {
+    const row = element("div", {class: "bar-row"});
+    row.append(element("span", {}, who === "him" ? "His" : "League"));
+    const bar = element("div", {class: "bar"});
+    bar.append(element("span", {style: `width:${Math.round(share * 100)}%;background:${color}`}));
+    row.append(bar, element("span", {}, `${Math.round(share * 100)}%`));
+    wrapper.append(row);
+  });
+  return wrapper;
+}
+
+function foulSection(coach) {
+  const section = element("section");
+  section.append(element("h3", {}, "Foul trouble"));
+  const foul = coach.foul_trouble;
+  if (!foul) {
+    section.append(element("p", {class: "detail"},
+      "Not enough close games to audit his foul-trouble decisions (the audit needs 100)."));
+    return section;
+  }
+  const league = DATA.league_foul_trouble;
+  section.append(element("p", {class: "headline"},
+    foul.high < 0 ? `His foul-trouble benching costs his team about ${Math.abs(foul.season_wins).toFixed(2)} wins a season.`
+    : foul.low > 0 ? `His foul-trouble handling gains his team about ${foul.season_wins.toFixed(2)} wins a season.`
+    : "His foul-trouble handling is not clearly better or worse than ignoring fouls."));
+  const bars = element("div", {class: "bars"});
+  bars.append(
+    shareBar("Starter with 2 fouls in the 1st quarter: share of time on the floor", foul.q1_2_fouls, league["Q1 2 fouls"]),
+    shareBar("Starter with 4 fouls in the 3rd quarter", foul.q3_4_fouls, league["Q3 4 fouls"]),
+    shareBar("Starter with 5 fouls in the 4th quarter", foul.q4_5_fouls, league["Q4 5 fouls"]));
+  section.append(bars);
+  const perGame = foul.cost_per_starter_game * 100;
+  section.append(element("p", {class: "verdict"},
+    `Win probability per starter per game, compared with the same rotation ignoring fouls: ` +
+    `${perGame >= 0 ? "+" : ""}${perGame.toFixed(3)} percentage points (95% range ${(foul.low * 100).toFixed(3)} to ` +
+    `${(foul.high * 100).toFixed(3)}). Ranked ${ordinal(foul.cost_rank)} most costly of ${DATA.audited_coaches} ` +
+    `audited coaches. His starters are worth ${foul.value_over_bench.toFixed(1)} points per 48 minutes over his ` +
+    `bench, so benching them ${foul.value_over_bench < 1 ? "costs little" : "costs more"}. Season wins assume five similar starters.`));
+  return section;
+}
+
+function teamsSection(coach) {
+  const section = element("section");
+  section.append(element("h3", {}, "By team"));
+  section.append(element("p", {class: "detail"}, "Does his style travel? Each team's figures include his general tendency."));
+  const table = element("table");
+  const head = element("tr");
+  ["Team", "Seasons", "Games", "Timeouts", "Subs"].forEach((name, index) => {
+    head.append(element("th", index >= 2 ? {class: "number"} : {}, name));
+  });
+  table.append(head);
+  coach.teams.forEach(team => {
+    const row = element("tr");
+    row.append(element("td", {}, team.team), element("td", {}, team.seasons),
+      element("td", {class: "number"}, String(team.games)),
+      element("td", {class: "number"}, team.timeout_ratio == null ? "–" : signedPercent(team.timeout_ratio)),
+      element("td", {class: "number"}, team.substitution_ratio == null ? "–" : signedPercent(team.substitution_ratio)));
+    table.append(row);
+  });
+  section.append(table);
+  return section;
+}
+
+function showCoach(name) {
+  const coach = DATA.coaches.find(candidate => candidate.name === name);
+  const card = document.getElementById("card");
+  card.replaceChildren();
+  if (!coach) {
+    card.append(element("p", {class: "detail"}, "Coach not found. Pick another from the list."));
+    return;
+  }
+  card.append(element("h2", {}, coach.name));
+  card.append(element("p", {class: "teams-line"},
+    coach.teams.map(team => `${team.team} ${team.seasons}`).join(" · ") + ` · ${coach.games} games`));
+  const timeouts = DATA.coaches.map(other => other.timeouts.ratio);
+  const substitutions = DATA.coaches.map(other => other.substitutions.ratio);
+  card.append(
+    decisionSection("Timeouts", "timeout calls", coach.timeouts, timeouts,
+      "Excludes TV timeouts the scorer forces."),
+    decisionSection("Substitutions", "substitutions", coach.substitutions, substitutions,
+      "Accounts for which players he has."),
+    foulSection(coach));
+  if (coach.teams.length > 1) card.append(teamsSection(coach));
+  history.replaceState(null, "", `#${encodeURIComponent(coach.name)}`);
+}
+
+function lastName(name) {
+  const parts = name.split(" ").filter(part => !["Jr.", "Sr.", "II", "III", "IV"].includes(part));
+  return parts[parts.length - 1];
+}
+
+function start() {
+  document.getElementById("data-line").textContent =
+    `Regular seasons ${DATA.seasons}, ${DATA.games.toLocaleString()} games.`;
+  const select = document.getElementById("coach");
+  const byName = [...DATA.coaches].sort((a, b) => lastName(a.name).localeCompare(lastName(b.name)));
+  byName.forEach(coach => select.append(element("option", {value: coach.name}, coach.name)));
+  const fromLink = decodeURIComponent(location.hash.slice(1));
+  const mostGames = [...DATA.coaches].sort((a, b) => b.games - a.games)[0].name;
+  select.value = DATA.coaches.some(coach => coach.name === fromLink) ? fromLink : mostGames;
+  select.addEventListener("change", () => showCoach(select.value));
+  showCoach(select.value);
+}
+
+start();
+</script>
+</body>
+</html>

@@ -21,3 +21,6 @@ data/raw/*
 *.duckdb
 *.duckdb.wal
 .ipynb_checkpoints/
+
+# Cached model results for the scout report (rebuilt by coachmodel.scout_report)
+data/scout_data.json

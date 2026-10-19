@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bench Brain</title>
+<meta name="description" content="How NBA head coaches manage timeouts, substitutions, and foul trouble, compared with an average coach in the same game situations.">
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #ffffff; --ink: #1d1f23; --muted: #646a73; --line: #dfdcd3;
+    --accent: #c4512d; --accent-soft: #f3ddd4; --league: #8a8f98; --good: #2f7d5b; --bad: #b5402a;
+    --range: #c4512d33;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15171a; --card: #1e2125; --ink: #ecebe7; --muted: #a2a7ae; --line: #33373d;
+      --accent: #ec7a52; --accent-soft: #3a2820; --league: #7d838c; --good: #5fbf8f; --bad: #ef7a62;
+      --range: #ec7a5240;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171a; --card: #1e2125; --ink: #ecebe7; --muted: #a2a7ae; --line: #33373d;
+    --accent: #ec7a52; --accent-soft: #3a2820; --league: #7d838c; --good: #5fbf8f; --bad: #ef7a62;
+    --range: #ec7a5240;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 28px 16px 48px; }
+  header h1 { margin: 0; font-size: 2rem; letter-spacing: -0.02em; }
+  header p { margin: 6px 0 0; color: var(--muted); }
+  .picker { margin: 24px 0 16px; }
+  .picker label { display: block; font-weight: 600; margin-bottom: 6px; }
+  select {
+    width: 100%; font: inherit; font-size: 1.05rem; padding: 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .card h2 { margin: 0; font-size: 1.5rem; }
+  .teams-line { color: var(--muted); margin: 2px 0 0; }
+  section { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 16px; }
+  section h3 { margin: 0 0 4px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .headline { font-size: 1.2rem; font-weight: 600; margin: 4px 0; }
+  .detail { color: var(--muted); margin: 4px 0 0; font-size: 0.95rem; }
+  .axis { position: relative; height: 44px; margin: 14px 4px 4px; }
+  .axis .track { position: absolute; left: 0; right: 0; top: 20px; height: 2px; background: var(--line); }
+  .axis .others { position: absolute; top: 13px; width: 2px; height: 16px; background: var(--league); opacity: 0.45; }
+  .axis .range { position: absolute; top: 15px; height: 12px; border-radius: 6px; background: var(--range); }
+  .axis .dot { position: absolute; top: 13px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%;
+               background: var(--accent); border: 2px solid var(--card); }
+  .axis .average { position: absolute; top: 4px; width: 2px; height: 34px; margin-left: -1px; background: var(--ink); }
+  .axis .tick { position: absolute; top: 32px; transform: translateX(-50%); font-size: 0.75rem; color: var(--muted); }
+  .bars { display: grid; gap: 12px; margin-top: 12px; }
+  .bar-label { font-size: 0.95rem; margin-bottom: 4px; }
+  .bar-row { display: grid; grid-template-columns: 64px 1fr 44px; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); }
+  .bar { height: 12px; border-radius: 6px; background: var(--line); overflow: hidden; }
+  .bar span { display: block; height: 100%; border-radius: 6px; }
+  .verdict { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--accent-soft); }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.95rem; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
+  td.number, th.number { text-align: right; }
+  details { margin-top: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p, details li { color: var(--muted); }
+  footer { margin-top: 24px; color: var(--muted); font-size: 0.9rem; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Bench Brain</h1>
+    <p>How NBA head coaches manage timeouts, substitutions, and foul trouble, compared with an average coach in the same game situations.</p>
+    <p id="data-line"></p>
+  </header>
+
+  <div class="picker">
+    <label for="coach">Pick a coach</label>
+    <select id="coach"></select>
+  </div>
+
+  <article class="card" id="card" aria-live="polite"></article>
+
+  <details>
+    <summary>How to read this</summary>
+    <ul>
+      <li><strong>"In the same situations."</strong> Every comparison is against what an average NBA coach would have done in this coach's exact game situations: same score, clock, fouls, timeouts left, what just happened, and (for substitutions) the same players' minutes and fouls. A coach who trails a lot is not counted as "timeout-happy" just for trailing.</li>
+      <li><strong>Substitutions account for the roster.</strong> Stars rarely come out of games under any coach, so who a coach has is separated from how he uses them.</li>
+      <li><strong>95% ranges</strong> show how sure the numbers are. A coach with little data gets a wide range; a range that crosses "average" means he is not clearly different from an average coach.</li>
+      <li><strong>Foul trouble</strong> compares the coach's real habits with the same rotation if he ignored fouls, in a model of the game that measures each choice in win probability. It only counts how he handles foul trouble, not how many minutes he gives starters in general.</li>
+    </ul>
+  </details>
+
+  <details>
+    <summary>Method</summary>
+    <p>Data: every regular-season play-by-play from the NBA's public stats site, turned into decision events and game states in SQL (DuckDB). Timeouts and substitutions: a league-wide logistic regression for each decision, plus partially pooled coach, coach-team, and (for substitutions) player effects, fit by penalized maximum likelihood. The models beat the league-average model on a fully held-out season (2025-26). Ranges for coach effects use a Laplace approximation that holds team and player effects fixed, so they are slightly too narrow.</p>
+    <p>Foul trouble: a Markov decision process for one starter (minutes left, fouls, minutes played, score margin), solved by backward induction against a win-probability model calibrated to the data. Each coach's on-court shares by quarter and foul count are run through it for a starter worth what his starters are worth over his bench (regularized adjusted plus-minus). Ranges come from resampling his games. Coaches with fewer than 100 close games are not audited.</p>
+  </details>
+
+  <footer>Built by Derek Jobin. Code and full write-up: <a href="https://github.com/derekjobin2008/nba-coach-model">github.com/derekjobin2008/nba-coach-model</a></footer>
+</main>
+
+<script>
+const DATA = __SCOUT_DATA__;
+
+const AXIS_MIN = 0.5, AXIS_MAX = 2.0;  // ratio axis, log scale: half as often to twice as often
+
+function axisPosition(ratio) {
+  const clamped = Math.min(Math.max(ratio, AXIS_MIN), AXIS_MAX);
+  return (Math.log(clamped) - Math.log(AXIS_MIN)) / (Math.log(AXIS_MAX) - Math.log(AXIS_MIN)) * 100;
+}
+
+function moreOrFewer(ratio, noun) {
+  const change = Math.round(Math.abs(ratio - 1) * 100);
+  if (change === 0) return `about as many ${noun} as`;
+  return `${change}% ${ratio > 1 ? "more" : "fewer"} ${noun} than`;
+}
+
+function signedPercent(ratio) {
+  const change = Math.round((ratio - 1) * 100);
+  return `${change > 0 ? "+" : ""}${change}%`;
+}
+
+function ordinal(n) {
+  const suffix = (n % 100 >= 11 && n % 100 <= 13) ? "th" : ({1: "st", 2: "nd", 3: "rd"}[n % 10] || "th");
+  return `${n}${suffix}`;
+}
+
+function element(tag, attributes = {}, text = "") {
+  const node = document.createElement(tag);
+  Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, value));
+  if (text) node.textContent = text;
+  return node;
+}
+
+function ratioAxis(ratio, low, high, everyone, label) {
+  const axis = element("div", {class: "axis", role: "img", "aria-label": label});
+  axis.append(element("div", {class: "track"}));
+  everyone.forEach(other => {
+    axis.append(element("div", {class: "others", style: `left:${axisPosition(other)}%`}));
+  });
+  axis.append(element("div", {class: "range",
+    style: `left:${axisPosition(low)}%;width:${axisPosition(high) - axisPosition(low)}%`}));
+  axis.append(element("div", {class: "average", style: `left:${axisPosition(1)}%`}));
+  axis.append(element("div", {class: "dot", style: `left:${axisPosition(ratio)}%`}));
+  [[0.5, "half"], [1, "average"], [2, "double"]].forEach(([value, name]) => {
+    axis.append(element("div", {class: "tick", style: `left:${axisPosition(value)}%`}, name));
+  });
+  return axis;
+}
+
+function decisionSection(title, noun, stats, everyone, note) {
+  const section = element("section");
+  section.append(element("h3", {}, title));
+  const known = stats.low > 1 || stats.high < 1;
+  section.append(element("p", {class: "headline"},
+    `Makes ${moreOrFewer(stats.ratio, noun)} an average coach in the same situations.`));
+  const rank = everyone.filter(other => other > stats.ratio).length + 1;
+  section.append(ratioAxis(stats.ratio, stats.low, stats.high, everyone,
+    `${title}: ${signedPercent(stats.ratio)} versus average`));
+  section.append(element("p", {class: "detail"},
+    `95% range ${signedPercent(stats.low)} to ${signedPercent(stats.high)}` +
+    (known ? "" : " (not clearly different from average)") +
+    `. Ranks ${ordinal(rank)} of ${everyone.length} coaches, most to fewest. Grey ticks are the other coaches. ${note}`));
+  return section;
+}
+
+function shareBar(label, coachShare, leagueShare) {
+  const wrapper = element("div");
+  wrapper.append(element("div", {class: "bar-label"}, label));
+  [["him", coachShare, "var(--accent)"], ["league", leagueShare, "var(--league)"]].forEach(([who, share, color]) => {
+    const row = element("div", {class: "bar-row"});
+    row.append(element("span", {}, who === "him" ? "His" : "League"));
+    const bar = element("div", {class: "bar"});
+    bar.append(element("span", {style: `width:${Math.round(share * 100)}%;background:${color}`}));
+    row.append(bar, element("span", {}, `${Math.round(share * 100)}%`));
+    wrapper.append(row);
+  });
+  return wrapper;
+}
+
+function foulSection(coach) {
+  const section = element("section");
+  section.append(element("h3", {}, "Foul trouble"));
+  const foul = coach.foul_trouble;
+  if (!foul) {
+    section.append(element("p", {class: "detail"},
+      "Not enough close games to audit his foul-trouble decisions (the audit needs 100)."));
+    return section;
+  }
+  const league = DATA.league_foul_trouble;
+  section.append(element("p", {class: "headline"},
+    foul.high < 0 ? `His foul-trouble benching costs his team about ${Math.abs(foul.season_wins).toFixed(2)} wins a season.`
+    : foul.low > 0 ? `His foul-trouble handling gains his team about ${foul.season_wins.toFixed(2)} wins a season.`
+    : "His foul-trouble handling is not clearly better or worse than ignoring fouls."));
+  const bars = element("div", {class: "bars"});
+  bars.append(
+    shareBar("Starter with 2 fouls in the 1st quarter: share of time on the floor", foul.q1_2_fouls, league["Q1 2 fouls"]),
+    shareBar("Starter with 4 fouls in the 3rd quarter", foul.q3_4_fouls, league["Q3 4 fouls"]),
+    shareBar("Starter with 5 fouls in the 4th quarter", foul.q4_5_fouls, league["Q4 5 fouls"]));
+  section.append(bars);
+  const perGame = foul.cost_per_starter_game * 100;
+  section.append(element("p", {class: "verdict"},
+    `Win probability per starter per game, compared with the same rotation ignoring fouls: ` +
+    `${perGame >= 0 ? "+" : ""}${perGame.toFixed(3)} percentage points (95% range ${(foul.low * 100).toFixed(3)} to ` +
+    `${(foul.high * 100).toFixed(3)}). Ranked ${ordinal(foul.cost_rank)} most costly of ${DATA.audited_coaches} ` +
+    `audited coaches. His starters are worth ${foul.value_over_bench.toFixed(1)} points per 48 minutes over his ` +
+    `bench, so benching them ${foul.value_over_bench < 1 ? "costs little" : "costs more"}. Season wins assume five similar starters.`));
+  return section;
+}
+
+function teamsSection(coach) {
+  const section = element("section");
+  section.append(element("h3", {}, "By team"));
+  section.append(element("p", {class: "detail"}, "Does his style travel? Each team's figures include his general tendency."));
+  const table = element("table");
+  const head = element("tr");
+  ["Team", "Seasons", "Games", "Timeouts", "Subs"].forEach((name, index) => {
+    head.append(element("th", index >= 2 ? {class: "number"} : {}, name));
+  });
+  table.append(head);
+  coach.teams.forEach(team => {
+    const row = element("tr");
+    row.append(element("td", {}, team.team), element("td", {}, team.seasons),
+      element("td", {class: "number"}, String(team.games)),
+      element("td", {class: "number"}, team.timeout_ratio == null ? "–" : signedPercent(team.timeout_ratio)),
+      element("td", {class: "number"}, team.substitution_ratio == null ? "–" : signedPercent(team.substitution_ratio)));
+    table.append(row);
+  });
+  section.append(table);
+  return section;
+}
+
+function showCoach(name) {
+  const coach = DATA.coaches.find(candidate => candidate.name === name);
+  const card = document.getElementById("card");
+  card.replaceChildren();
+  if (!coach) {
+    card.append(element("p", {class: "detail"}, "Coach not found. Pick another from the list."));
+    return;
+  }
+  card.append(element("h2", {}, coach.name));
+  card.append(element("p", {class: "teams-line"},
+    coach.teams.map(team => `${team.team} ${team.seasons}`).join(" · ") + ` · ${coach.games} games`));
+  const timeouts = DATA.coaches.map(other => other.timeouts.ratio);
+  const substitutions = DATA.coaches.map(other => other.substitutions.ratio);
+  card.append(
+    decisionSection("Timeouts", "timeout calls", coach.timeouts, timeouts,
+      "Excludes TV timeouts the scorer forces."),
+    decisionSection("Substitutions", "substitutions", coach.substitutions, substitutions,
+      "Accounts for which players he has."),
+    foulSection(coach));
+  if (coach.teams.length > 1) card.append(teamsSection(coach));
+  history.replaceState(null, "", `#${encodeURIComponent(coach.name)}`);
+}
+
+function lastName(name) {
+  const parts = name.split(" ").filter(part => !["Jr.", "Sr.", "II", "III", "IV"].includes(part));
+  return parts[parts.length - 1];
+}
+
+function start() {
+  document.getElementById("data-line").textContent =
+    `Regular seasons ${DATA.seasons}, ${DATA.games.toLocaleString()} games.`;
+  const select = document.getElementById("coach");
+  const byName = [...DATA.coaches].sort((a, b) => lastName(a.name).localeCompare(lastName(b.name)));
+  byName.forEach(coach => select.append(element("option", {value: coach.name}, coach.name)));
+  const fromLink = decodeURIComponent(location.hash.slice(1));
+  const mostGames = [...DATA.coaches].sort((a, b) => b.games - a.games)[0].name;
+  select.value = DATA.coaches.some(coach => coach.name === fromLink) ? fromLink : mostGames;
+  select.addEventListener("change", () => showCoach(select.value));
+  showCoach(select.value);
+}
+
+start();
+</script>
+</body>
+</html>

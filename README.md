@@ -81,6 +81,18 @@ PYTHONPATH=src .venv/bin/python -m coachmodel.coach_effects --task timeout --tes
 
 Feature queries live in `sql/models/` (read by the model code, not part of the build).
 
+## Scout report page
+
+```bash
+# Fit the models on every game and build docs/index.html (about 15 minutes)
+PYTHONPATH=src .venv/bin/python -m coachmodel.scout_report
+# Restyle only: rebuild the page from the cached results in data/scout_data.json
+PYTHONPATH=src .venv/bin/python -m coachmodel.scout_report --render
+```
+
+The page is one self-contained file (the data is embedded) served by GitHub Pages from
+`docs/` in the public repository: https://derekjobin2008.github.io/nba-coach-model/
+
 ## Public copy
 
 `scripts/publish_public.sh "message"` pushes a clean snapshot of `main` (without the course

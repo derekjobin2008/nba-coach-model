@@ -44,6 +44,14 @@ TAU_GRIDS = {
     "timeout": {"coach": [0.1, 0.2, 0.3, 0.5, 0.8], "stint": [0.01, 0.1, 0.2, 0.4]},
     "substitution": {"coach": [0.1], "stint": [0.1], "player": [0.01, 0.2, 0.4, 0.8]},
 }
+# Spreads chosen by cross-validation in the full-season test (train through 2024-25,
+# test 2025-26); reused when fitting on every game for the scout report, where running
+# the cross-validation again would take about an hour for substitutions.
+CHOSEN_TAUS = {
+    "timeout": {"coach": 0.2, "stint": 0.1},
+    "substitution": {"coach": 0.1, "stint": 0.1, "player": 0.4},
+}
+LEVEL_COLUMNS = {"coach": "coach_name", "stint": "stint", "player": "person_id"}
 CROSS_VALIDATION_FOLDS = 5
 BOOTSTRAP_SAMPLES = 2000
 
@@ -115,6 +123,62 @@ def choose_taus(offset, labels, rows: pd.DataFrame, columns, tau_grid, rng) -> d
             total += row_log_loss(labels[held_out], offset[held_out] + model.effects_for(rows[held_out])).sum()
         losses[values] = total
     return dict(zip(tau_grid, min(losses, key=losses.get)))
+
+
+def load_task_rows(connection: duckdb.DuckDBPyConnection, task) -> pd.DataFrame:
+    """The task's feature rows that have a head coach, with a coach-team stint label."""
+    frame = load_features(connection, task)
+    teams = dict(connection.sql("SELECT DISTINCT home_team_id, home_team FROM games").fetchall())
+    frame = frame[frame["coach_name"].notna()].reset_index(drop=True)
+    frame["stint"] = frame["coach_name"] + " (" + frame["team_id"].map(teams) + ")"
+    return frame
+
+
+def pooled_log_odds(model, rows: pd.DataFrame) -> np.ndarray:
+    """The pooled model's prediction as log-odds (clipped so the logit stays finite)."""
+    return logit(np.clip(model.predict_proba(rows)[:, 1], 1e-6, 1 - 1e-6))
+
+
+def coach_rate_ratios(model: GroupEffects, rows: pd.DataFrame, offset: np.ndarray, tau_coach: float,
+                      label: str) -> pd.DataFrame:
+    """Per coach: his predicted decisions divided by what an average coach would make in
+    his exact situations, with a 95% range for his coach effect.
+
+    The range uses the Laplace approximation: the effect's standard error is one over the
+    square root of the curvature of the penalized log-likelihood at its peak, which for
+    one coach is the sum of p(1 - p) over his decisions plus 1 / tau^2 from the prior. It
+    holds his team-stint and player effects fixed, so the ranges are slightly too narrow."""
+    total = offset + model.effects_for(rows)
+    coach_effect = rows["coach_name"].map(model.effects["coach"]).to_numpy()
+    without_coach = total - coach_effect
+    probability = expit(total)
+    frame = pd.DataFrame({"coach": rows["coach_name"].to_numpy(), "curvature": probability * (1 - probability)})
+    standard_error = 1 / np.sqrt(frame.groupby("coach")["curvature"].sum() + 1 / tau_coach ** 2)
+    standard_error_by_row = rows["coach_name"].map(standard_error).to_numpy()
+
+    def ratio(shift):
+        predicted = pd.Series(expit(without_coach + coach_effect + shift)).groupby(frame["coach"]).sum()
+        average = pd.Series(expit(without_coach)).groupby(frame["coach"]).sum()
+        return predicted / average
+
+    return pd.DataFrame({
+        "ratio": ratio(0.0),
+        "low": ratio(-1.96 * standard_error_by_row),
+        "high": ratio(1.96 * standard_error_by_row),
+        "decisions": pd.Series(rows[label].to_numpy()).groupby(frame["coach"]).sum(),
+    })
+
+
+def fit_on_all_games(connection: duckdb.DuckDBPyConnection, task_name: str):
+    """Pooled model plus group effects fit on every game, with the spreads chosen in the
+    full-season test. Returns (group effects model, rows, pooled log-odds)."""
+    task = TASKS[task_name]
+    taus = CHOSEN_TAUS[task_name]
+    rows = load_task_rows(connection, task)
+    offset = pooled_log_odds(build_model(task).fit(rows, rows[task.label]), rows)
+    columns = {level: LEVEL_COLUMNS[level] for level in taus}
+    model = GroupEffects(rows, columns).fit(offset, rows[task.label].to_numpy(), rows, taus)
+    return model, rows, offset
 
 
 def bootstrap_improvement(game_ids, pooled_losses, coach_losses, rng) -> np.ndarray:
@@ -189,22 +253,16 @@ def main() -> None:
     args = parser.parse_args()
     task = TASKS[args.task]
     tau_grid = TAU_GRIDS[args.task]
-    columns = {"coach": "coach_name", "stint": "stint", "player": "person_id"}
-    columns = {level: column for level, column in columns.items() if level in tau_grid}
+    columns = {level: LEVEL_COLUMNS[level] for level in tau_grid}
     rng = np.random.default_rng(124)
 
     connection = duckdb.connect(str(args.database), read_only=True)
-    frame = load_features(connection, task)
-    teams = dict(connection.sql("SELECT DISTINCT home_team_id, home_team FROM games").fetchall())
-    frame = frame[frame["coach_name"].notna()].reset_index(drop=True)
-    frame["stint"] = frame["coach_name"] + " (" + frame["team_id"].map(teams) + ")"
-    train, test = split_by_date(frame, args.test_from)
+    train, test = split_by_date(load_task_rows(connection, task), args.test_from)
     train, test = train.reset_index(drop=True), test.reset_index(drop=True)
 
     pooled_model = build_model(task).fit(train, train[task.label])
-    clip = lambda p: np.clip(p, 1e-6, 1 - 1e-6)  # noqa: E731 (keeps logit finite)
-    train_offset = logit(clip(pooled_model.predict_proba(train)[:, 1]))
-    test_offset = logit(clip(pooled_model.predict_proba(test)[:, 1]))
+    train_offset = pooled_log_odds(pooled_model, train)
+    test_offset = pooled_log_odds(pooled_model, test)
     train_labels, test_labels = train[task.label].to_numpy(), test[task.label].to_numpy()
 
     taus = choose_taus(train_offset, train_labels, train, columns, tau_grid, rng)

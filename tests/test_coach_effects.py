@@ -94,3 +94,20 @@ def test_per_coach_count_error():
     labels = np.array([1, 1, 1, 0])
     predicted = np.array([0.5, 0.5, 0.75, 0.75])  # a: 1 vs 2 (50% off), b: 1.5 vs 1 (50% off)
     assert np.isclose(per_coach_count_error(coaches, labels, predicted), 0.5)
+
+
+def test_rate_ratio_ranges_reflect_effect_and_sample_size():
+    from coachmodel.coach_effects import coach_rate_ratios
+
+    # Coach A calls more (true effect +0.5) with lots of data; coach B is average with little.
+    rng = np.random.default_rng(5)
+    coaches = np.array(["A"] * 40_000 + ["B"] * 2_000)
+    offset = rng.normal(-3, 1, len(coaches))
+    labels = (rng.random(len(coaches)) < 1 / (1 + np.exp(-(offset + np.where(coaches == "A", 0.5, 0.0))))).astype(int)
+    rows = pd.DataFrame({"coach_name": coaches, "called_timeout": labels})
+    model = GroupEffects(rows, {"coach": "coach_name"}).fit(offset, labels, rows, {"coach": 1.0})
+    ratios = coach_rate_ratios(model, rows, offset, 1.0, "called_timeout")
+    a, b = ratios.loc["A"], ratios.loc["B"]
+    assert a["low"] < a["ratio"] < a["high"] and a["low"] > 1.3  # clearly above average
+    assert b["low"] < 1 < b["high"]  # not distinguishable from average
+    assert (b["high"] - b["low"]) > (a["high"] - a["low"])  # less data, wider range

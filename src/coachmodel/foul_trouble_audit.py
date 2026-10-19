@@ -86,24 +86,21 @@ def foul_handling_cost(league, rows, foul_rate, multipliers, sigma, cap, value_p
     return actual - ignoring, solve(player, sigma).tip_off() - actual
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--database", type=Path, default=DATABASE_PATH)
-    args = parser.parse_args()
-    rng = np.random.default_rng(124)
-
+def audit_coaches(connection: duckdb.DuckDBPyConnection, rng, bootstrap_samples: int = BOOTSTRAP_SAMPLES) -> pd.DataFrame:
+    """One row per coach with MIN_CLOSE_GAMES+ close games: his revealed foul-trouble
+    shares, his starters' value over his bench, and the win probability his foul handling
+    costs per starter-game, with a 95% range from resampling his games."""
     from coachmodel.foul_trouble_effects import EFFECTS_SQL, fourth_quarter_foul_multipliers
     from coachmodel.player_value import SEGMENTS_SQL, STARTER_SQL, coach_value_over_bench, fit_player_values
     from coachmodel.win_probability import WinProbability, load_rows
 
-    with duckdb.connect(str(args.database), read_only=True) as connection:
-        rows = connection.sql((MODELS_SQL_DIR / "foul_trouble_coach_policy.sql").read_text()).df()
-        coaches = connection.sql("SELECT game_id, team_id, coach_name FROM game_coaches").df()
-        players = connection.sql((MODELS_SQL_DIR / "foul_trouble_players.sql").read_text()).df()
-        multipliers = tuple(fourth_quarter_foul_multipliers(connection.sql(EFFECTS_SQL.read_text()).df()))
-        win_rows = load_rows(connection)
-        player_values, _, _ = fit_player_values(connection.sql(SEGMENTS_SQL.read_text()).df())
-        coach_values = coach_value_over_bench(connection.sql(STARTER_SQL).df(), player_values)
+    rows = connection.sql((MODELS_SQL_DIR / "foul_trouble_coach_policy.sql").read_text()).df()
+    coaches = connection.sql("SELECT game_id, team_id, coach_name FROM game_coaches").df()
+    players = connection.sql((MODELS_SQL_DIR / "foul_trouble_players.sql").read_text()).df()
+    multipliers = tuple(fourth_quarter_foul_multipliers(connection.sql(EFFECTS_SQL.read_text()).df()))
+    win_rows = load_rows(connection)
+    player_values, _, _ = fit_player_values(connection.sql(SEGMENTS_SQL.read_text()).df())
+    coach_values = coach_value_over_bench(connection.sql(STARTER_SQL).df(), player_values)
     sigma = calibrate_sigma(WinProbability().fit(win_rows[win_rows["season_type"] == "Regular Season"])
                             .home_win_probability)
     regulars = players[players["close_starts"] >= 40]
@@ -127,7 +124,7 @@ def main() -> None:
 
         by_game = {game: part for game, part in coach_rows.groupby("game_id")}
         draws = []
-        for _ in range(BOOTSTRAP_SAMPLES):
+        for _ in range(bootstrap_samples):
             sample = pd.concat([by_game[game] for game in rng.choice(games, len(games))])
             draws.append(foul_handling_cost(league, sample, foul_rate, multipliers, sigma, cap, value)[0])
         low, high = np.percentile(draws, [2.5, 97.5])
@@ -141,8 +138,24 @@ def main() -> None:
             "season wins": cost * STARTERS * SEASON_GAMES, "optimal gain": optimal_gap,
             "cost if worth 6": fixed_cost,
         })
+    return pd.DataFrame(results).sort_values("cost per starter-game").set_index("coach")
 
-    table = pd.DataFrame(results).sort_values("cost per starter-game").set_index("coach")
+
+def league_foul_trouble_shares(connection: duckdb.DuckDBPyConnection) -> dict[str, float]:
+    """League-wide starter on-court shares in the three foul-trouble cells the page shows."""
+    rows = connection.sql((MODELS_SQL_DIR / "foul_trouble_coach_policy.sql").read_text()).df()
+    cells = cells_by_quarter(rows)
+    return {name: float(cells.loc[cell, "seconds_on"] / cells.loc[cell, "seconds"])
+            for name, cell in {"Q1 2 fouls": (1, 2), "Q3 4 fouls": (3, 4), "Q4 5 fouls": (4, 5)}.items()}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--database", type=Path, default=DATABASE_PATH)
+    args = parser.parse_args()
+    with duckdb.connect(str(args.database), read_only=True) as connection:
+        table = audit_coaches(connection, np.random.default_rng(124))
+
     print("foul-handling cost for a starter worth what this coach's starters are worth over his bench "
           "(RAPM, points per 48)\n(win probability points per starter-game; negative = his foul handling costs wins)")
     print(f"season wins = cost x {STARTERS} starters x {SEASON_GAMES} games (assumes similar starters)\n")
