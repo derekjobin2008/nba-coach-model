@@ -63,14 +63,15 @@ Phases:
 - 2026-10-13: Possession (`has_ball`) added to the timeout features: 2025-26 log loss 0.0976 -> 0.0975 (22.9% -> 23.0% better than constant). Almost no gain because the stoppage cause already implies possession (after an opponent's basket you have the ball); only team rebounds split (timeout rate 2.2% with the ball vs 0.95% without).
 - 2026-10-19: **Bench Brain scout page live** at https://derekjobin2008.github.io/nba-coach-model/ (`coachmodel.scout_report`, GitHub Pages from `docs/` of the public repo). Pick one of 49 head coaches: timeout and substitution tendencies vs an average coach in the same situations with 95% ranges (Laplace), foul-trouble shares vs league and the audit's cost with its range (27 audited coaches), and a by-team table for coaches who moved. Checked at 375 px wide; Derek opened it and read both answers for Nick Nurse (29% fewer timeouts, fewest of 49; foul-trouble benching ~0.10 wins a season). 67 tests, two of which run the page's own JavaScript.
 - 2026-10-19: **Honest ranges check** (`coachmodel.range_check`). Finish line (agreed with Derek): on seasons the model never saw, 95% ranges contain about 95% of coaches. Rolling-origin design (fit on earlier seasons, predict each of 2022-23 to 2025-26; 108 timeout and 112 substitution coach-seasons), z = (next-season effect - estimate) / combined standard error. The page's original ranges were overconfident: timeouts 67% inside (z sd 1.90), substitutions 36% (z sd 5.04). Joint Laplace (coach vs team vs player uncertainty) fixes most of it (87% / 67%); game clustering adds almost nothing; the rest is real season-to-season change in coaches (sd 0.105 log-odds, ~11%, for timeouts; 0.176, ~19%, for substitutions). With all three, cross-fitted: **94% / 96% inside, z sd 0.97 / 1.01**. The page now shows two ranges per coach: his long-run tendency (joint + clustered; decides "clearly different from average": 22 of 49 coaches for timeouts, 12 of 49 for substitutions) and a single season (adds drift; the range that passed the check). 71 tests.
+- 2026-10-19: Derek moved on from the cleaner range layout without the 5-second phone check ("keep going").
+- 2026-10-19: **Team strength in win probability** (`sql/12_team_rating_inputs.sql`, `coachmodel.win_probability --by-season`). Pre-game rating per team from earlier games only (window frame ends one row before the game) plus last season: (margin so far + 10 games x half of last season's margin per game) / (games + 10), weights fit on game margins. Leave-one-season-out log loss improves every season (e.g. 2025-26 0.475 -> 0.437). Finish line was "middle calibration bins within 2 points", which turned out to be below the noise floor (each bin holds a few hundred game outcomes, chance sd about 2 points); corrected to "within chance": worst middle bin 1.3 to 2.3 chance-sd in every season (lower than without ratings in every season). The foul-trouble MDP's margin noise moves from 2.70 to 2.85; the per-coach audit shrinks about 6% (Spoelstra -0.50 -> -0.47 wins) with an identical ranking of all 27 coaches, so it is robust to this change. Page rebuilt. 73 tests.
 
 ## Next
 
 1. **Keep making the models statistically stronger** (Derek, 2026-10-19: the page is not the end). Done: honest ranges. Candidates: a fully Bayesian check on a subsample; whether drift differs by coach; the foul-trouble open questions below.
 2. Foul-trouble audit, open questions: starters may be worth more in close late games; RAPM shrinkage understates starter-over-bench gaps (a box-score prior would help); test Derek's targeting idea directly (do opponents attack a player in foul trouble?).
 3. Timeouts during opponent runs (second Phase 3 problem).
-4. Win probability: add team strength and each season's home edge.
-5. Timeouts remaining in overtime and the 4th-quarter limits (max 4 in Q4, max 2 after 3:00).
+4. Timeouts remaining in overtime and the 4th-quarter limits (max 4 in Q4, max 2 after 3:00).
 
 ## Decisions
 
@@ -163,6 +164,12 @@ Phases:
   (the substitution check takes about an hour). Sandwich errors were first computed as
   H^-1 B H^-1, which drops the prior's share of uncertainty and came out narrower than
   the joint ones; corrected to H^-1 + H^-1 (B - A) H^-1.
+- 2026-10-19: Season home edge not modeled: it varies (+1.6 to +2.6 points per game) but a
+  season's early games do not predict it (2022-23: +3.18 first half, +1.82 second half),
+  and a version that estimated it from earlier games was always fit to ignore them, so it
+  was removed. I set the first win-probability finish line (within 2 points) without
+  checking the noise floor; lesson: measure what chance alone produces before setting a
+  calibration target.
 - 2026-10-11: Validation games chosen by Derek: 2025 ECF Game 6 IND-NYK and 2024 WCSF Game 7 MIN-DEN.
 
 - 2026-10-11: Game state uses ASOF JOIN (latest row at or before the decision) rather than

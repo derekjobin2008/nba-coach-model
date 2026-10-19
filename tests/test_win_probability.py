@@ -43,3 +43,42 @@ def test_win_probability_behaves_like_basketball(database):
     # The same lead is worth more as the clock runs down.
     early, late = model.home_win_probability([6, 6], [2400, 30], [-1, -1])
     assert late > early > 0.5
+
+
+def test_team_ratings_use_only_earlier_games():
+    import duckdb
+    from pathlib import Path
+    connection = duckdb.connect()
+    connection.execute("""
+        CREATE TABLE games AS SELECT * FROM (VALUES
+            ('g1', '2024-25', 'Regular Season', DATE '2024-10-22', 1, 2, 110, 100),
+            ('g2', '2024-25', 'Regular Season', DATE '2024-10-24', 1, 3, 90, 95),
+            ('g3', '2024-25', 'Regular Season', DATE '2024-10-26', 3, 1, 100, 120)
+        ) AS t(game_id, season, season_type, game_date, home_team_id, away_team_id, home_points, away_points)
+    """)
+    sql = (Path(__file__).parents[1] / "sql" / "12_team_rating_inputs.sql").read_text()
+    connection.execute(sql)
+    team_1 = connection.sql("""
+        SELECT game_id, games_before, margin_before FROM team_rating_inputs WHERE team_id = 1 ORDER BY game_id
+    """).fetchall()
+    # Before g3, team 1 has played g1 (+10) and g2 (-5); g3's own result (+20) is never used.
+    assert team_1 == [("g1", 0, 0), ("g2", 1, 10), ("g3", 2, 5)]
+
+
+def test_rating_weights_find_a_real_last_season_effect():
+    import pandas as pd
+    from coachmodel.win_probability import fit_rating_weights
+    rng = np.random.default_rng(0)
+    n = 5000
+    strength_home, strength_away = rng.normal(0, 5, n), rng.normal(0, 5, n)
+    games = pd.DataFrame({
+        # Early-season games: little current-season evidence, last season informative.
+        "home_games_before": 2, "away_games_before": 2,
+        "home_margin_before": 2 * (strength_home + rng.normal(0, 12, n)),
+        "away_margin_before": 2 * (strength_away + rng.normal(0, 12, n)),
+        "home_previous_season_margin": strength_home + rng.normal(0, 2, n),
+        "away_previous_season_margin": strength_away + rng.normal(0, 2, n),
+        "final_home_margin": 2 + strength_home - strength_away + rng.normal(0, 12, n),
+    })
+    k_games, prior_weight = fit_rating_weights(games)
+    assert prior_weight > 0 and k_games >= 5

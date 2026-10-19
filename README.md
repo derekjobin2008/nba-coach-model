@@ -47,6 +47,7 @@ Tables, built in this order:
 | `decision_state` | decision, with the game state known at that moment |
 | `stoppages` | dead-ball stoppage per team, labeled `called_timeout` (Phase 2 timeout task) |
 | `stoppage_players` | on-court player per stoppage, labeled `subbed_out` (Phase 2 substitution task) |
+| `team_rating_inputs` | team per game: point differential in earlier games and last season's average |
 | `game_coaches` | team per game, with its head coach |
 
 Head coaches come from `data/head_coaches.csv`: each team's opening coach per season plus
@@ -64,7 +65,9 @@ paces itself and waits out blocks (up to 15 minutes) instead of skipping games.
 PYTHONPATH=src .venv/bin/python -m coachmodel.baseline --task timeout --test-from 2025-03-01
 PYTHONPATH=src .venv/bin/python -m coachmodel.baseline --task substitution --test-from 2025-03-01
 # Win probability (home team), with optional charts saved to reports/
-PYTHONPATH=src .venv/bin/python -m coachmodel.win_probability --test-from 2025-03-01 --chart 0042300237
+PYTHONPATH=src .venv/bin/python -m coachmodel.win_probability --chart 0042300237
+# Season-by-season check, with and without team ratings
+PYTHONPATH=src .venv/bin/python -m coachmodel.win_probability --by-season
 # Does foul trouble change how a player plays? (each player vs his own low-foul baseline)
 PYTHONPATH=src .venv/bin/python -m coachmodel.foul_trouble_effects
 # Phase 3: foul-trouble MDP (backward induction), optimal vs coaches' observed policy

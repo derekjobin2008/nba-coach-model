@@ -8,8 +8,20 @@ scored grows like sqrt(t). So the features scale by 1 / sqrt(t):
     margin / sqrt(t)        a lead, measured in "remaining-time standard deviations"
     ball / sqrt(t)          having the ball (+1 home, -1 away) is worth about a point
     sqrt(t)                 home-court edge accrues over the time still to play
+    gap * sqrt(t)           the better team's edge (rating gap, points per game) accrues
+                            the same way: gap * t points still to come, scaled by 1/sqrt(t)
 The result is smooth and monotone in margin and time, which the optimization in Phase 3
-needs. Team strength is not included yet.
+needs.
+
+Team ratings use only games already played (no leakage): a team's point differential so
+far this season plus K_GAMES games' worth of its previous season's average (times
+PRIOR_WEIGHT, since teams regress toward average between seasons), divided by games
+played plus K_GAMES. K_GAMES and PRIOR_WEIGHT are fit by predicting game margins on the
+training seasons.
+
+Each season's own home edge (+1.6 to +2.6 points per game) is not modeled: it cannot be
+predicted from the season's earlier games (2022-23: +3.18 in its first half, +1.82 in its
+second), and a version that tried was always fit to ignore them.
 
 Usage:
     python -m coachmodel.win_probability --test-from 2025-03-01
@@ -33,25 +45,71 @@ REGULATION_SECONDS = 2880
 TIME_SLACK_SECONDS = 5
 
 
-def model_features(home_margin, seconds_left, home_ball) -> np.ndarray:
+K_GAMES_GRID = [3, 5, 10, 15, 20, 30]
+PRIOR_WEIGHT_GRID = [0.0, 0.25, 0.5, 0.75, 1.0]
+
+
+def model_features(home_margin, seconds_left, home_ball, rating_gap=0.0) -> np.ndarray:
     time_share = (np.asarray(seconds_left, dtype=float) + TIME_SLACK_SECONDS) / REGULATION_SECONDS
     scale = 1 / np.sqrt(time_share)
+    rating_gap = np.broadcast_to(np.asarray(rating_gap, dtype=float), time_share.shape)
     return np.column_stack([
         np.asarray(home_margin, dtype=float) * scale,
         np.asarray(home_ball, dtype=float) * scale,
         np.sqrt(time_share),
+        rating_gap * np.sqrt(time_share),
     ])
 
 
+def team_rating(games_before, margin_before, previous_season_margin, k_games, prior_weight) -> np.ndarray:
+    """Points per game better than average, from earlier games and last season."""
+    prior = prior_weight * np.nan_to_num(np.asarray(previous_season_margin, dtype=float))
+    return (np.asarray(margin_before, dtype=float) + k_games * prior) / (np.asarray(games_before, dtype=float) + k_games)
+
+
+def rating_gap(rows: pd.DataFrame, k_games: float, prior_weight: float) -> np.ndarray:
+    home = team_rating(rows["home_games_before"], rows["home_margin_before"], rows["home_previous_season_margin"],
+                       k_games, prior_weight)
+    away = team_rating(rows["away_games_before"], rows["away_margin_before"], rows["away_previous_season_margin"],
+                       k_games, prior_weight)
+    return np.nan_to_num(home - away)
+
+
+def fit_rating_weights(games: pd.DataFrame) -> tuple[float, float]:
+    """K_GAMES and PRIOR_WEIGHT that best predict final margins (home edge + rating gap,
+    least squares) on one row per game."""
+    margin = games["final_home_margin"].to_numpy(dtype=float)
+    home_edge = float(np.mean(margin))
+    errors = {}
+    for k_games in K_GAMES_GRID:
+        for prior_weight in PRIOR_WEIGHT_GRID:
+            residual = margin - home_edge - rating_gap(games, k_games, prior_weight)
+            errors[(k_games, prior_weight)] = np.mean(residual ** 2)
+    return min(errors, key=errors.get)
+
+
 class WinProbability:
+    def __init__(self, use_ratings: bool = True):
+        self.use_ratings = use_ratings
+
+    def gap(self, frame: pd.DataFrame) -> np.ndarray:
+        return rating_gap(frame, self.k_games, self.prior_weight) if self.use_ratings else 0.0
+
     def fit(self, frame: pd.DataFrame):
-        features = model_features(frame["home_margin"], frame["seconds_left"], frame["home_ball"])
-        # No penalty: three features and millions of rows, nothing to regularize.
+        if self.use_ratings:
+            self.k_games, self.prior_weight = fit_rating_weights(frame.drop_duplicates("game_id"))
+        features = model_features(frame["home_margin"], frame["seconds_left"], frame["home_ball"], self.gap(frame))
+        # No penalty: four features and millions of rows, nothing to regularize.
         self.model = LogisticRegression(C=np.inf, max_iter=1000).fit(features, frame["home_won"])
         return self
 
-    def home_win_probability(self, home_margin, seconds_left, home_ball) -> np.ndarray:
-        return self.model.predict_proba(model_features(home_margin, seconds_left, home_ball))[:, 1]
+    def home_win_probability(self, home_margin, seconds_left, home_ball, rating_gap=0.0) -> np.ndarray:
+        """rating_gap: home rating minus away rating (points per game); 0 = even teams."""
+        return self.model.predict_proba(model_features(home_margin, seconds_left, home_ball, rating_gap))[:, 1]
+
+    def predict_rows(self, frame: pd.DataFrame) -> np.ndarray:
+        return self.home_win_probability(frame["home_margin"], frame["seconds_left"], frame["home_ball"],
+                                         self.gap(frame))
 
 
 def load_rows(connection: duckdb.DuckDBPyConnection) -> pd.DataFrame:
@@ -86,7 +144,7 @@ def plot_game(connection: duckdb.DuckDBPyConnection, model: WinProbability, game
         WHERE d.game_id = '{game_id}' AND d.event_type = 'timeout' AND NOT d.likely_mandatory
     """).df()
     elapsed_minutes = (REGULATION_SECONDS - rows["seconds_left"].where(rows["period"] <= 4, 0)) / 60
-    probability = model.home_win_probability(rows["home_margin"], rows["seconds_left"], rows["home_ball"])
+    probability = model.predict_rows(rows)
 
     figure, axis = plt.subplots(figsize=(10, 4.5))
     axis.plot(elapsed_minutes, probability, color="#2f6db5", linewidth=1.6)
@@ -107,13 +165,59 @@ def plot_game(connection: duckdb.DuckDBPyConnection, model: WinProbability, game
     plt.close(figure)
 
 
+def calibration_noise(frame: pd.DataFrame, predicted: np.ndarray, rng, draws: int = 200) -> np.ndarray:
+    """Chance spread (sd) of each calibration bin's observed win rate, from resampling
+    whole games: a game's outcome is shared by all its plays, so a bin holds a few
+    hundred independent outcomes, not hundreds of thousands."""
+    bins = pd.qcut(predicted, 10, labels=False, duplicates="drop")
+    outcomes = frame["home_won"].to_numpy()
+    by_game = list(frame.groupby("game_id").indices.values())
+    rates = []
+    for _ in range(draws):
+        rows = np.concatenate([by_game[i] for i in rng.integers(0, len(by_game), len(by_game))])
+        rates.append(pd.Series(outcomes[rows]).groupby(bins[rows]).mean().reindex(range(10)).to_numpy())
+    return np.nanstd(rates, axis=0)
+
+
+def leave_one_season_out(frame: pd.DataFrame, use_ratings: bool, rng) -> pd.DataFrame:
+    """Fit on all other seasons, score each season: log loss, the worst calibration error
+    among the middle bins (3rd to 8th of 10), and that error in units of chance spread
+    (about 2.6 or more would be more than chance among six bins)."""
+    results = []
+    for season in sorted(frame["season"].unique()):
+        train, test = frame[frame["season"] != season], frame[frame["season"] == season]
+        predicted = WinProbability(use_ratings).fit(train).predict_rows(test)
+        table = calibration_table(test["home_won"].to_numpy(), predicted)
+        error = (table["observed_rate"] - table["mean_predicted"]).to_numpy()
+        noise = calibration_noise(test, predicted, rng)
+        results.append({"season": season,
+                        "log loss": evaluate(train["home_won"].to_numpy(), test["home_won"].to_numpy(), predicted)["model_log_loss"],
+                        "worst middle bin": float(np.abs(error[2:8]).max()),
+                        "in noise units": float(np.abs(error[2:8] / noise[2:8]).max())})
+    return pd.DataFrame(results).set_index("season")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--test-from", required=True, help="hold out games on or after this date (YYYY-MM-DD)")
+    parser.add_argument("--test-from", default="2025-10-01", help="hold out games on or after this date (default: 2025-26)")
     parser.add_argument("--database", type=Path, default=DATABASE_PATH)
     parser.add_argument("--chart", action="append", default=[], metavar="GAME_ID",
                         help="also save a win probability chart for this game to reports/")
+    parser.add_argument("--by-season", action="store_true",
+                        help="leave-one-season-out check, with and without team ratings")
     args = parser.parse_args()
+
+    if args.by_season:
+        with duckdb.connect(str(args.database), read_only=True) as connection:
+            frame = load_rows(connection)
+        frame = frame[frame["season_type"] == "Regular Season"]
+        rng = np.random.default_rng(124)
+        without = leave_one_season_out(frame, use_ratings=False, rng=rng)
+        with_ratings = leave_one_season_out(frame, use_ratings=True, rng=rng)
+        table = without.join(with_ratings, lsuffix=" (no ratings)", rsuffix=" (ratings)")
+        print("leave-one-season-out: fit on the other seasons, score this one")
+        print(table.to_string(float_format=lambda v: f"{v:.4f}"))
+        return
 
     connection = duckdb.connect(str(args.database), read_only=True)
     frame = load_rows(connection)
@@ -125,7 +229,7 @@ def main() -> None:
         plot_game(connection, model, game_id, chart_path)
         print(f"saved {chart_path.relative_to(REPO_ROOT)}")
     connection.close()
-    predicted = model.home_win_probability(test["home_margin"], test["seconds_left"], test["home_ball"])
+    predicted = model.predict_rows(test)
 
     results = evaluate(train["home_won"].to_numpy(), test["home_won"].to_numpy(), predicted)
     print(f"train: {train['game_id'].nunique():,} games ({len(train):,} plays), "
