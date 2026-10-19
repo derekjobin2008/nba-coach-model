@@ -90,7 +90,7 @@
     <ul>
       <li><strong>"In the same situations."</strong> Every comparison is against what an average NBA coach would have done in this coach's exact game situations: same score, clock, fouls, timeouts left, what just happened, and (for substitutions) the same players' minutes and fouls. A coach who trails a lot is not counted as "timeout-happy" just for trailing.</li>
       <li><strong>Substitutions account for the roster.</strong> Stars rarely come out of games under any coach, so who a coach has is separated from how he uses them.</li>
-      <li><strong>Two 95% ranges.</strong> The dark bar is his long-run tendency: how precisely the data pins down his usual habit, including how hard it is to separate him from his team and players. If it does not cross "average", he is clearly different from an average coach. The light bar is where a single season of his should land, which is wider because coaches really do change from year to year (about 11% for timeouts, 19% for substitutions). Tested on four past seasons, about 95% of coaches' seasons landed inside the light bar.</li>
+      <li><strong>Two 95% ranges.</strong> The short bar is his long-run tendency: how precisely the data pins down his usual habit, including how hard it is to separate him from his team and players. If it does not cross "average", he is clearly different from an average coach. The long bar is where a single season of his should land, which is wider because coaches really do change from year to year (about 11% for timeouts, 19% for substitutions). Tested on four past seasons, about 95% of coaches' seasons landed inside the long bar.</li>
       <li><strong>Foul trouble</strong> compares the coach's real habits with the same rotation if he ignored fouls, in a model of the game that measures each choice in win probability. It only counts how he handles foul trouble, not how many minutes he gives starters in general.</li>
     </ul>
   </details>
@@ -166,9 +166,9 @@ function decisionSection(title, noun, stats, everyone, note) {
   const rank = everyone.filter(other => other > stats.ratio).length + 1;
   section.append(ratioAxis(stats, everyone, `${title}: ${signedPercent(stats.ratio)} versus average`));
   section.append(element("p", {class: "detail"},
-    `His long-run tendency: ${signedPercent(stats.tendency_low)} to ${signedPercent(stats.tendency_high)} (dark bar, 95%)` +
+    `His long-run tendency: ${signedPercent(stats.tendency_low)} to ${signedPercent(stats.tendency_high)} (short bar, 95%)` +
     (known ? ", clearly different from average." : ", not clearly different from average.") +
-    ` In a single season, expect ${signedPercent(stats.low)} to ${signedPercent(stats.high)} (light bar): coaches change from year to year.` +
+    ` In a single season, expect ${signedPercent(stats.low)} to ${signedPercent(stats.high)} (long bar): coaches change from year to year.` +
     ` Ranks ${ordinal(rank)} of ${everyone.length} coaches, most to fewest. Grey ticks are the other coaches. ${note}`));
   return section;
 }

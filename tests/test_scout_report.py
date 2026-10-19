@@ -78,8 +78,8 @@ def test_opens_on_the_coach_with_most_games_and_answers_both_questions():
     assert "Makes 53% more timeout calls than an average coach in the same situations." in card
     assert "His foul-trouble benching costs his team about 0.47 wins a season." in card
     # "Clearly different" follows the long-run tendency range, not the wider season range.
-    assert "(dark bar, 95%), clearly different from average." in card
-    assert "(dark bar, 95%), not clearly different from average." in card  # substitutions: tendency crosses 1
+    assert "(short bar, 95%), clearly different from average." in card
+    assert "(short bar, 95%), not clearly different from average." in card  # substitutions: tendency crosses 1
 
 
 @needs_node
