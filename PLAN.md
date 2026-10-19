@@ -62,10 +62,11 @@ Phases:
 - 2026-10-13: The "missing" games 602 and 723 in three seasons were ordinary games that hit the API quota (each season's run hit it at about the same request count); retried, all five seasons now have 1,230 of 1,230 games.
 - 2026-10-13: Possession (`has_ball`) added to the timeout features: 2025-26 log loss 0.0976 -> 0.0975 (22.9% -> 23.0% better than constant). Almost no gain because the stoppage cause already implies possession (after an opponent's basket you have the ball); only team rebounds split (timeout rate 2.2% with the ball vs 0.95% without).
 - 2026-10-19: **Bench Brain scout page live** at https://derekjobin2008.github.io/nba-coach-model/ (`coachmodel.scout_report`, GitHub Pages from `docs/` of the public repo). Pick one of 49 head coaches: timeout and substitution tendencies vs an average coach in the same situations with 95% ranges (Laplace), foul-trouble shares vs league and the audit's cost with its range (27 audited coaches), and a by-team table for coaches who moved. Checked at 375 px wide; Derek opened it and read both answers for Nick Nurse (29% fewer timeouts, fewest of 49; foul-trouble benching ~0.10 wins a season). 67 tests, two of which run the page's own JavaScript.
+- 2026-10-19: **Honest ranges check** (`coachmodel.range_check`). Finish line (agreed with Derek): on seasons the model never saw, 95% ranges contain about 95% of coaches. Rolling-origin design (fit on earlier seasons, predict each of 2022-23 to 2025-26; 108 timeout and 112 substitution coach-seasons), z = (next-season effect - estimate) / combined standard error. The page's original ranges were overconfident: timeouts 67% inside (z sd 1.90), substitutions 36% (z sd 5.04). Joint Laplace (coach vs team vs player uncertainty) fixes most of it (87% / 67%); game clustering adds almost nothing; the rest is real season-to-season change in coaches (sd 0.105 log-odds, ~11%, for timeouts; 0.176, ~19%, for substitutions). With all three, cross-fitted: **94% / 96% inside, z sd 0.97 / 1.01**. The page now shows two ranges per coach: his long-run tendency (joint + clustered; decides "clearly different from average": 22 of 49 coaches for timeouts, 12 of 49 for substitutions) and a single season (adds drift; the range that passed the check). 71 tests.
 
 ## Next
 
-1. **Keep making the models statistically stronger** (Derek, 2026-10-19: the page is not the end). Candidates: full uncertainty for coach effects (the Laplace ranges hold team and player effects fixed), a fully Bayesian check on a subsample, and the open questions below.
+1. **Keep making the models statistically stronger** (Derek, 2026-10-19: the page is not the end). Done: honest ranges. Candidates: a fully Bayesian check on a subsample; whether drift differs by coach; the foul-trouble open questions below.
 2. Foul-trouble audit, open questions: starters may be worth more in close late games; RAPM shrinkage understates starter-over-bench gaps (a box-score prior would help); test Derek's targeting idea directly (do opponents attack a player in foul trouble?).
 3. Timeouts during opponent runs (second Phase 3 problem).
 4. Win probability: add team strength and each season's home edge.
@@ -155,6 +156,13 @@ Phases:
   build output in git") because Pages serves it from the repo. Coach effects on the page
   carry 95% ranges from a Laplace approximation, so a coach with little data visibly
   shows a wide range (Derek wants the work grounded in statistics).
+- 2026-10-19: Page ranges are season forecasts (joint + clustered standard error plus
+  season-to-season drift), not the uncertainty of a coach's career average, because a
+  scout uses them to predict this season. Drift is a constant per task from the rolling
+  check, stored in `coach_effects.SEASON_DRIFT_SD`, rather than refit on every page build
+  (the substitution check takes about an hour). Sandwich errors were first computed as
+  H^-1 B H^-1, which drops the prior's share of uncertainty and came out narrower than
+  the joint ones; corrected to H^-1 + H^-1 (B - A) H^-1.
 - 2026-10-11: Validation games chosen by Derek: 2025 ECF Game 6 IND-NYK and 2024 WCSF Game 7 MIN-DEN.
 
 - 2026-10-11: Game state uses ASOF JOIN (latest row at or before the decision) rather than

@@ -25,7 +25,7 @@ from scipy.special import expit
 
 from coachmodel.baseline import TASKS
 from coachmodel.build_db import DATABASE_PATH, REPO_ROOT
-from coachmodel.coach_effects import CHOSEN_TAUS, coach_rate_ratios, fit_on_all_games
+from coachmodel.coach_effects import coach_rate_ratios, fit_on_all_games, tendency_and_season_uncertainty
 from coachmodel.foul_trouble_audit import audit_coaches, league_foul_trouble_shares
 
 CACHE_PATH = REPO_ROOT / "data" / "scout_data.json"
@@ -56,7 +56,11 @@ def stint_rate_ratios(model, rows: pd.DataFrame, offset: np.ndarray) -> pd.Serie
 
 def task_summary(connection, task_name: str) -> tuple[pd.DataFrame, pd.Series]:
     model, rows, offset = fit_on_all_games(connection, task_name)
-    ratios = coach_rate_ratios(model, rows, offset, CHOSEN_TAUS[task_name]["coach"], TASKS[task_name].label)
+    tendency, season = tendency_and_season_uncertainty(model, rows, offset, task_name)
+    label = TASKS[task_name].label
+    ratios = coach_rate_ratios(model, rows, offset, season, label)
+    tendency_ratios = coach_rate_ratios(model, rows, offset, tendency, label)
+    ratios["tendency_low"], ratios["tendency_high"] = tendency_ratios["low"], tendency_ratios["high"]
     return ratios, stint_rate_ratios(model, rows, offset)
 
 

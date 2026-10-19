@@ -30,6 +30,7 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pandas as pd
+from scipy import sparse
 from scipy.optimize import minimize
 from scipy.special import expit, logit
 
@@ -51,6 +52,9 @@ CHOSEN_TAUS = {
     "timeout": {"coach": 0.2, "stint": 0.1},
     "substitution": {"coach": 0.1, "stint": 0.1, "player": 0.4},
 }
+# Season-to-season change in a coach's true effect (sd in log-odds), estimated by
+# coachmodel.range_check on 2022-23 to 2025-26.
+SEASON_DRIFT_SD = {"timeout": 0.105, "substitution": 0.176}
 LEVEL_COLUMNS = {"coach": "coach_name", "stint": "stint", "player": "person_id"}
 CROSS_VALIDATION_FOLDS = 5
 BOOTSTRAP_SAMPLES = 2000
@@ -107,6 +111,62 @@ class GroupEffects:
         return sum(rows[self.columns[level]].map(self.effects[level]).fillna(0).to_numpy() for level in levels)
 
 
+def effect_design(model: GroupEffects, rows: pd.DataFrame) -> tuple[sparse.csr_matrix, dict[str, slice], np.ndarray]:
+    """Indicator matrix Z (one column per coach, stint, and player effect) so that the
+    fitted log-odds are offset + Z @ parameters, with each level's column range."""
+    blocks, slices, parameters, start = [], {}, [], 0
+    for level, column in model.columns.items():
+        members = model.members[level]
+        number = {name: n for n, name in enumerate(members)}
+        index = rows[column].map(number).to_numpy()
+        known = ~np.isnan(index.astype(float))
+        blocks.append(sparse.csr_matrix(
+            (np.ones(known.sum()), (np.flatnonzero(known), index[known].astype(int))),
+            shape=(len(rows), len(members))))
+        slices[level] = slice(start, start + len(members))
+        parameters.append([model.effects[level][name] for name in members])
+        start += len(members)
+    return sparse.hstack(blocks).tocsr(), slices, np.concatenate(parameters)
+
+
+def coach_standard_errors(model: GroupEffects, rows: pd.DataFrame, offset: np.ndarray, labels: np.ndarray,
+                          taus: dict[str, float], method: str) -> pd.Series:
+    """Standard error of each coach effect, three ways (all Laplace approximations at the
+    fitted peak, where H is the curvature of the penalized log-likelihood):
+        conditional  1 / sqrt(H[c, c]): treats his team and player effects as known
+        joint        sqrt of the diagonal of H^-1: also counts the uncertainty about how
+                     much belongs to him rather than his team or players
+        clustered    joint, plus the extra variance from decisions within a game moving
+                     together: H^-1 + H^-1 (B - A) H^-1, where A is the information if
+                     decisions were independent and B is the same measured game by game
+                     (B = A when they are independent, leaving the joint answer)
+    """
+    design, slices, parameters = effect_design(model, rows)
+    labels, offset = np.asarray(labels, dtype=float), np.asarray(offset, dtype=float)
+    probability = expit(offset + design @ parameters)
+    prior = np.concatenate([np.full(model_slice.stop - model_slice.start, 1 / taus[level] ** 2)
+                            for level, model_slice in slices.items()])
+    independent_information = (design.T @ sparse.diags(probability * (1 - probability)) @ design).toarray()
+    curvature = independent_information + np.diag(prior)
+    coaches = slices["coach"]
+    if method == "conditional":
+        variance = 1 / np.diag(curvature)[coaches]
+    else:
+        inverse = np.linalg.inv(curvature)
+        if method == "joint":
+            variance = np.diag(inverse)[coaches]
+        elif method == "clustered":
+            games = pd.factorize(rows["game_id"])[0]
+            game_matrix = sparse.csr_matrix((np.ones(len(rows)), (games, np.arange(len(rows)))))
+            scores = (game_matrix @ design.multiply((labels - probability)[:, None])).toarray()
+            by_game_information = scores.T @ scores
+            extra = inverse @ (by_game_information - independent_information) @ inverse
+            variance = np.diag(inverse + extra)[coaches]
+        else:
+            raise ValueError(f"unknown method {method}")
+    return pd.Series(np.sqrt(variance), index=model.members["coach"])
+
+
 def choose_taus(offset, labels, rows: pd.DataFrame, columns, tau_grid, rng) -> dict[str, float]:
     """Pick the prior spreads that predict held-out games best (K-fold by game)."""
     games = rows["game_id"].unique()
@@ -139,34 +199,41 @@ def pooled_log_odds(model, rows: pd.DataFrame) -> np.ndarray:
     return logit(np.clip(model.predict_proba(rows)[:, 1], 1e-6, 1 - 1e-6))
 
 
-def coach_rate_ratios(model: GroupEffects, rows: pd.DataFrame, offset: np.ndarray, tau_coach: float,
-                      label: str) -> pd.DataFrame:
+def coach_rate_ratios(model: GroupEffects, rows: pd.DataFrame, offset: np.ndarray,
+                      uncertainty: pd.Series, label: str) -> pd.DataFrame:
     """Per coach: his predicted decisions divided by what an average coach would make in
-    his exact situations, with a 95% range for his coach effect.
-
-    The range uses the Laplace approximation: the effect's standard error is one over the
-    square root of the curvature of the penalized log-likelihood at its peak, which for
-    one coach is the sum of p(1 - p) over his decisions plus 1 / tau^2 from the prior. It
-    holds his team-stint and player effects fixed, so the ranges are slightly too narrow."""
+    his exact situations, with a 95% range from shifting his coach effect by +-1.96 times
+    his uncertainty (a standard deviation in log-odds, one per coach)."""
     total = offset + model.effects_for(rows)
     coach_effect = rows["coach_name"].map(model.effects["coach"]).to_numpy()
     without_coach = total - coach_effect
-    probability = expit(total)
-    frame = pd.DataFrame({"coach": rows["coach_name"].to_numpy(), "curvature": probability * (1 - probability)})
-    standard_error = 1 / np.sqrt(frame.groupby("coach")["curvature"].sum() + 1 / tau_coach ** 2)
-    standard_error_by_row = rows["coach_name"].map(standard_error).to_numpy()
+    coaches = rows["coach_name"].to_numpy()
+    spread = rows["coach_name"].map(uncertainty).to_numpy()
 
     def ratio(shift):
-        predicted = pd.Series(expit(without_coach + coach_effect + shift)).groupby(frame["coach"]).sum()
-        average = pd.Series(expit(without_coach)).groupby(frame["coach"]).sum()
+        predicted = pd.Series(expit(without_coach + coach_effect + shift)).groupby(coaches).sum()
+        average = pd.Series(expit(without_coach)).groupby(coaches).sum()
         return predicted / average
 
     return pd.DataFrame({
         "ratio": ratio(0.0),
-        "low": ratio(-1.96 * standard_error_by_row),
-        "high": ratio(1.96 * standard_error_by_row),
-        "decisions": pd.Series(rows[label].to_numpy()).groupby(frame["coach"]).sum(),
+        "low": ratio(-1.96 * spread),
+        "high": ratio(1.96 * spread),
+        "decisions": pd.Series(rows[label].to_numpy()).groupby(coaches).sum(),
     })
+
+
+def tendency_and_season_uncertainty(model: GroupEffects, rows: pd.DataFrame, offset: np.ndarray,
+                                    task_name: str) -> tuple[pd.Series, pd.Series]:
+    """Two standard deviations per coach (log-odds):
+        tendency  how precisely his long-run tendency is known: joint, game-clustered
+                  standard error. Decides whether he is clearly different from average.
+        season    where one season of his can land: the tendency's uncertainty plus real
+                  season-to-season change. Passed the rolling-origin check in
+                  coachmodel.range_check (about 95% of next seasons inside the 95% range)."""
+    labels = rows[TASKS[task_name].label].to_numpy()
+    tendency = coach_standard_errors(model, rows, offset, labels, CHOSEN_TAUS[task_name], "clustered")
+    return tendency, np.sqrt(tendency ** 2 + SEASON_DRIFT_SD[task_name] ** 2)
 
 
 def fit_on_all_games(connection: duckdb.DuckDBPyConnection, task_name: str):

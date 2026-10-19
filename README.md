@@ -71,6 +71,8 @@ PYTHONPATH=src .venv/bin/python -m coachmodel.foul_trouble_effects
 PYTHONPATH=src .venv/bin/python -m coachmodel.foul_trouble
 # Player values: regularized adjusted plus-minus from lineup segments
 PYTHONPATH=src .venv/bin/python -m coachmodel.player_value
+# Are the coach-effect ranges honest? Rolling-origin check (timeouts ~1 minute, substitutions ~1 hour)
+PYTHONPATH=src .venv/bin/python -m coachmodel.range_check --task timeout
 # Per-coach audit: what each coach's foul-trouble handling costs (about 3 minutes)
 PYTHONPATH=src .venv/bin/python -m coachmodel.foul_trouble_audit
 # Do starters benched for early foul trouble get their minutes back?

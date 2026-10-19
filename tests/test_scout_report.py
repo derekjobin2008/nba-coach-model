@@ -33,8 +33,10 @@ def coach(name, timeout_ratio, foul_trouble):
     return {"name": name, "games": 300,
             "teams": [{"team": "DEN", "games": 300, "seasons": "2021-22 to 2024-25",
                        "timeout_ratio": timeout_ratio, "substitution_ratio": None}],
-            "timeouts": {"ratio": timeout_ratio, "low": timeout_ratio - 0.06, "high": timeout_ratio + 0.06, "decisions": 900},
-            "substitutions": {"ratio": 0.9, "low": 0.85, "high": 0.95, "decisions": 5000},
+            "timeouts": {"ratio": timeout_ratio, "low": timeout_ratio - 0.3, "high": timeout_ratio + 0.3,
+                         "tendency_low": timeout_ratio - 0.06, "tendency_high": timeout_ratio + 0.06, "decisions": 900},
+            "substitutions": {"ratio": 0.9, "low": 0.6, "high": 1.2, "tendency_low": 0.95, "tendency_high": 1.05,
+                              "decisions": 5000},
             "foul_trouble": foul_trouble}
 
 
@@ -75,6 +77,9 @@ def test_opens_on_the_coach_with_most_games_and_answers_both_questions():
     assert "Michael Malone" in card
     assert "Makes 53% more timeout calls than an average coach in the same situations." in card
     assert "His foul-trouble benching costs his team about 0.47 wins a season." in card
+    # "Clearly different" follows the long-run tendency range, not the wider season range.
+    assert "(dark bar, 95%), clearly different from average." in card
+    assert "(dark bar, 95%), not clearly different from average." in card  # substitutions: tendency crosses 1
 
 
 @needs_node

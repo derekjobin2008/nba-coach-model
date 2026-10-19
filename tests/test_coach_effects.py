@@ -106,7 +106,9 @@ def test_rate_ratio_ranges_reflect_effect_and_sample_size():
     labels = (rng.random(len(coaches)) < 1 / (1 + np.exp(-(offset + np.where(coaches == "A", 0.5, 0.0))))).astype(int)
     rows = pd.DataFrame({"coach_name": coaches, "called_timeout": labels})
     model = GroupEffects(rows, {"coach": "coach_name"}).fit(offset, labels, rows, {"coach": 1.0})
-    ratios = coach_rate_ratios(model, rows, offset, 1.0, "called_timeout")
+    from coachmodel.coach_effects import coach_standard_errors
+    uncertainty = coach_standard_errors(model, rows, offset, labels, {"coach": 1.0}, "joint")
+    ratios = coach_rate_ratios(model, rows, offset, uncertainty, "called_timeout")
     a, b = ratios.loc["A"], ratios.loc["B"]
     assert a["low"] < a["ratio"] < a["high"] and a["low"] > 1.3  # clearly above average
     assert b["low"] < 1 < b["high"]  # not distinguishable from average

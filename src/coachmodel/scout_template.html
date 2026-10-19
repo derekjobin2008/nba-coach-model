@@ -48,6 +48,7 @@
   .axis .track { position: absolute; left: 0; right: 0; top: 20px; height: 2px; background: var(--line); }
   .axis .others { position: absolute; top: 13px; width: 2px; height: 16px; background: var(--league); opacity: 0.45; }
   .axis .range { position: absolute; top: 15px; height: 12px; border-radius: 6px; background: var(--range); }
+  .axis .tendency { position: absolute; top: 17px; height: 8px; border-radius: 4px; background: var(--accent); opacity: 0.55; }
   .axis .dot { position: absolute; top: 13px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%;
                background: var(--accent); border: 2px solid var(--card); }
   .axis .average { position: absolute; top: 4px; width: 2px; height: 34px; margin-left: -1px; background: var(--ink); }
@@ -89,14 +90,14 @@
     <ul>
       <li><strong>"In the same situations."</strong> Every comparison is against what an average NBA coach would have done in this coach's exact game situations: same score, clock, fouls, timeouts left, what just happened, and (for substitutions) the same players' minutes and fouls. A coach who trails a lot is not counted as "timeout-happy" just for trailing.</li>
       <li><strong>Substitutions account for the roster.</strong> Stars rarely come out of games under any coach, so who a coach has is separated from how he uses them.</li>
-      <li><strong>95% ranges</strong> show how sure the numbers are. A coach with little data gets a wide range; a range that crosses "average" means he is not clearly different from an average coach.</li>
+      <li><strong>Two 95% ranges.</strong> The dark bar is his long-run tendency: how precisely the data pins down his usual habit, including how hard it is to separate him from his team and players. If it does not cross "average", he is clearly different from an average coach. The light bar is where a single season of his should land, which is wider because coaches really do change from year to year (about 11% for timeouts, 19% for substitutions). Tested on four past seasons, about 95% of coaches' seasons landed inside the light bar.</li>
       <li><strong>Foul trouble</strong> compares the coach's real habits with the same rotation if he ignored fouls, in a model of the game that measures each choice in win probability. It only counts how he handles foul trouble, not how many minutes he gives starters in general.</li>
     </ul>
   </details>
 
   <details>
     <summary>Method</summary>
-    <p>Data: every regular-season play-by-play from the NBA's public stats site, turned into decision events and game states in SQL (DuckDB). Timeouts and substitutions: a league-wide logistic regression for each decision, plus partially pooled coach, coach-team, and (for substitutions) player effects, fit by penalized maximum likelihood. The models beat the league-average model on a fully held-out season (2025-26). Ranges for coach effects use a Laplace approximation that holds team and player effects fixed, so they are slightly too narrow.</p>
+    <p>Data: every regular-season play-by-play from the NBA's public stats site, turned into decision events and game states in SQL (DuckDB). Timeouts and substitutions: a league-wide logistic regression for each decision, plus partially pooled coach, coach-team, and (for substitutions) player effects, fit by penalized maximum likelihood. The models beat the league-average model on a fully held-out season (2025-26). Ranges combine a joint Laplace approximation over all coach, team, and player effects, a game-clustered correction for decisions within a game moving together, and an estimate of real season-to-season change in each coach. A rolling-origin check (fit on earlier seasons, predict each of 2022-23 to 2025-26) confirmed the ranges contain about 95% of coaches' next-season behavior; the simpler range used before contained only 67%.</p>
     <p>Foul trouble: a Markov decision process for one starter (minutes left, fouls, minutes played, score margin), solved by backward induction against a win-probability model calibrated to the data. Each coach's on-court shares by quarter and foul count are run through it for a starter worth what his starters are worth over his bench (regularized adjusted plus-minus). Ranges come from resampling his games. Coaches with fewer than 100 close games are not audited.</p>
   </details>
 
@@ -136,16 +137,20 @@ function element(tag, attributes = {}, text = "") {
   return node;
 }
 
-function ratioAxis(ratio, low, high, everyone, label) {
+function span(className, low, high) {
+  return element("div", {class: className,
+    style: `left:${axisPosition(low)}%;width:${axisPosition(high) - axisPosition(low)}%`});
+}
+
+function ratioAxis(stats, everyone, label) {
   const axis = element("div", {class: "axis", role: "img", "aria-label": label});
   axis.append(element("div", {class: "track"}));
   everyone.forEach(other => {
     axis.append(element("div", {class: "others", style: `left:${axisPosition(other)}%`}));
   });
-  axis.append(element("div", {class: "range",
-    style: `left:${axisPosition(low)}%;width:${axisPosition(high) - axisPosition(low)}%`}));
+  axis.append(span("range", stats.low, stats.high), span("tendency", stats.tendency_low, stats.tendency_high));
   axis.append(element("div", {class: "average", style: `left:${axisPosition(1)}%`}));
-  axis.append(element("div", {class: "dot", style: `left:${axisPosition(ratio)}%`}));
+  axis.append(element("div", {class: "dot", style: `left:${axisPosition(stats.ratio)}%`}));
   [[0.5, "half"], [1, "average"], [2, "double"]].forEach(([value, name]) => {
     axis.append(element("div", {class: "tick", style: `left:${axisPosition(value)}%`}, name));
   });
@@ -155,16 +160,16 @@ function ratioAxis(ratio, low, high, everyone, label) {
 function decisionSection(title, noun, stats, everyone, note) {
   const section = element("section");
   section.append(element("h3", {}, title));
-  const known = stats.low > 1 || stats.high < 1;
+  const known = stats.tendency_low > 1 || stats.tendency_high < 1;
   section.append(element("p", {class: "headline"},
     `Makes ${moreOrFewer(stats.ratio, noun)} an average coach in the same situations.`));
   const rank = everyone.filter(other => other > stats.ratio).length + 1;
-  section.append(ratioAxis(stats.ratio, stats.low, stats.high, everyone,
-    `${title}: ${signedPercent(stats.ratio)} versus average`));
+  section.append(ratioAxis(stats, everyone, `${title}: ${signedPercent(stats.ratio)} versus average`));
   section.append(element("p", {class: "detail"},
-    `95% range ${signedPercent(stats.low)} to ${signedPercent(stats.high)}` +
-    (known ? "" : " (not clearly different from average)") +
-    `. Ranks ${ordinal(rank)} of ${everyone.length} coaches, most to fewest. Grey ticks are the other coaches. ${note}`));
+    `His long-run tendency: ${signedPercent(stats.tendency_low)} to ${signedPercent(stats.tendency_high)} (dark bar, 95%)` +
+    (known ? ", clearly different from average." : ", not clearly different from average.") +
+    ` In a single season, expect ${signedPercent(stats.low)} to ${signedPercent(stats.high)} (light bar): coaches change from year to year.` +
+    ` Ranks ${ordinal(rank)} of ${everyone.length} coaches, most to fewest. Grey ticks are the other coaches. ${note}`));
   return section;
 }
 
