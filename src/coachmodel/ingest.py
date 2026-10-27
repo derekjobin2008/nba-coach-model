@@ -77,8 +77,9 @@ def download_player_list() -> None:
 def download_head_coaches(season: str, team_ids: list[int]) -> None:
     """Save each team's head coach for the season (one request per team).
 
-    The roster endpoint lists only the coach at the END of the season, so in-season
-    changes are recorded by hand in data/coach_changes.csv.
+    Only a cross-check: the endpoint reports a post-season snapshot that includes
+    off-season hires, so data/head_coaches.csv is the source of truth (see
+    tests/test_full_data.py).
     """
     path = RAW_DIR / "coaches" / f"{season}.json"
     if path.exists():
