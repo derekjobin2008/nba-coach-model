@@ -8,7 +8,7 @@ WITH at_two_minutes AS (
     GROUP BY ALL
 )
 SELECT
-    s.game_id, s.team_id, s.opponent_team_id, g.season, s.is_home, s.score_margin,
+    s.game_id, s.team_id, s.opponent_team_id, g.season, coach.coach_name, s.is_home, s.score_margin,
     coalesce(s.has_ball, false) AS has_ball,
     s.timeouts_remaining AS timeouts_left,
     opponent.timeouts_remaining AS opponent_timeouts_left,
@@ -22,6 +22,7 @@ JOIN team_state AS s USING (game_id, team_id, action_id)
 JOIN team_state AS opponent
   ON opponent.game_id = s.game_id AND opponent.action_id = s.action_id AND opponent.team_id = s.opponent_team_id
 JOIN games AS g ON g.game_id = s.game_id
+LEFT JOIN game_coaches AS coach ON coach.game_id = s.game_id AND coach.team_id = s.team_id
 LEFT JOIN team_rating_inputs AS own ON own.game_id = s.game_id AND own.team_id = s.team_id
 LEFT JOIN team_rating_inputs AS opp ON opp.game_id = s.game_id AND opp.team_id = s.opponent_team_id
 WHERE g.season_type = 'Regular Season' AND abs(s.score_margin) <= 6

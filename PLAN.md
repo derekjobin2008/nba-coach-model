@@ -66,13 +66,13 @@ Phases:
 - 2026-10-19: Derek moved on from the cleaner range layout without the 5-second phone check ("keep going").
 - 2026-10-19: **Team strength in win probability** (`sql/12_team_rating_inputs.sql`, `coachmodel.win_probability --by-season`). Pre-game rating per team from earlier games only (window frame ends one row before the game) plus last season: (margin so far + 10 games x half of last season's margin per game) / (games + 10), weights fit on game margins. Leave-one-season-out log loss improves every season (e.g. 2025-26 0.475 -> 0.437). Finish line was "middle calibration bins within 2 points", which turned out to be below the noise floor (each bin holds a few hundred game outcomes, chance sd about 2 points); corrected to "within chance": worst middle bin 1.3 to 2.3 chance-sd in every season (lower than without ratings in every season). The foul-trouble MDP's margin noise moves from 2.70 to 2.85; the per-coach audit shrinks about 6% (Spoelstra -0.50 -> -0.47 wins) with an identical ranking of all 27 coaches, so it is robust to this change. Page rebuilt. 73 tests.
 - 2026-10-19: **Timeout values** (`coachmodel.timeout_value`, `sql/models/timeout_run_effects.sql`, `timeout_endgame.sql`). Finish line (Derek agreed): each value with a 95% range. (a) During an opponent run of 6+ (82,729 stoppages), a coach timeout is worth -0.10 points over the next 3 minutes vs similar stoppages without one (-0.18 to -0.01, game-clustered), adjusting for run, score, time, possession, cause, fouls, timeouts left, team strength; TV timeouts (forced by the clock, a natural comparison) -0.17 (-0.48 to +0.15); runs of 8+ -0.10, 10+ -0.04, both ranges include 0; run length predicts nothing (no momentum). Raw comparisons were misleading because coaches call timeouts with the ball (98% vs 82%), worth +0.88 points. (b) One extra usable timeout at 2:00 of a game within 6 points: +2.1 win probability points (-1.3 to +5.5; few teams have fewer than 2, so the range is wide); the win probability model's coefficient there is 1.06 (well calibrated). 75 tests. Derek has not run it yet.
+- 2026-10-26: **Per-coach timeout audit** (`coachmodel.timeout_audit`). Finish line (Derek agreed): per coach, how often his timeout use leaves him short at the end of close games and the cost in wins per season, with a 95% range carrying both measured values' uncertainty. Since a run timeout is worth ~0 and only 2 timeouts may be used in the last 3 minutes, the optimal policy is immediate: never spend one that could leave you under 2. League: 12% of teams are short at 2:00 of a game within 6. 42 coaches with 40+ close games: most short Vogel 32% and Carlisle 31% (~0.22 wins per season, ranges -0.12 to +0.6), least Mazzulla 1% and McMillan 0%. Run timeouts per game and being short correlate 0.50 across coaches, but no coach's range excludes zero: timeout habits cost at most about half what foul-trouble habits do. Upper bound (timeouts have other uses). 78 tests. Derek has not run it yet.
 
 ## Next
 
 1. **Keep making the models statistically stronger** (Derek, 2026-10-19: the page is not the end). Done: honest ranges. Candidates: a fully Bayesian check on a subsample; whether drift differs by coach; the foul-trouble open questions below.
 2. Foul-trouble audit, open questions: starters may be worth more in close late games; RAPM shrinkage understates starter-over-bench gaps (a box-score prior would help); test Derek's targeting idea directly (do opponents attack a player in foul trouble?).
-3. Timeout MDP and coach audit: spend a timeout during a run (worth ~0 points) or save it for the end (~2 win probability points), per coach, like the foul-trouble audit.
-4. Timeouts remaining in overtime and the 4th-quarter limits (max 4 in Q4, max 2 after 3:00).
+3. Timeouts remaining in overtime and the 4th-quarter limits (max 4 in Q4, max 2 after 3:00).
 
 ## Decisions
 
@@ -177,6 +177,10 @@ Phases:
   the coach, place them. End-game value uses a linear probability model with the win
   probability prediction as a control so the coefficient reads directly as win
   probability per timeout.
+- 2026-10-26: The timeout MDP was solved analytically rather than coded as a grid: with
+  spending worth at most zero and only the last 2 timeouts usable at the end, backward
+  induction gives "never spend one that could leave you under 2" directly, so the audit
+  measures shortfall at 2:00 against that policy.
 - 2026-10-11: Validation games chosen by Derek: 2025 ECF Game 6 IND-NYK and 2024 WCSF Game 7 MIN-DEN.
 
 - 2026-10-11: Game state uses ASOF JOIN (latest row at or before the decision) rather than
