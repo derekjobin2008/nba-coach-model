@@ -3,7 +3,7 @@
 -- out of the pooled baseline's features: who the player is belongs to the
 -- hierarchical model.
 SELECT
-    p.game_id, p.team_id, p.person_id, g.season, g.season_type, g.game_date, coaches.coach_name,
+    p.game_id, p.stoppage_action_id, p.team_id, p.person_id, g.season, g.season_type, g.game_date, coaches.coach_name,
     s.stoppage_cause,
     greatest(least(s.score_margin, 25), -25) AS score_margin,
     abs(greatest(least(s.score_margin, 25), -25)) AS abs_score_margin,

@@ -78,6 +78,10 @@ PYTHONPATH=src .venv/bin/python -m coachmodel.player_value
 PYTHONPATH=src .venv/bin/python -m coachmodel.range_check --task timeout
 # What is a timeout worth? (a) during an opponent's run, (b) saved for the last 2 minutes
 PYTHONPATH=src .venv/bin/python -m coachmodel.timeout_value
+# Does the next-stoppage forecast beat the coach's own average and the league model on 2025-26?
+PYTHONPATH=src .venv/bin/python -m coachmodel.forecast_check --task timeout
+# How strong are coach habits? Size, split-half reliability, calibration on 2025-26
+PYTHONPATH=src .venv/bin/python -m coachmodel.coach_signal --task timeout
 # Per-coach timeout audit: cost of arriving at the end of close games short of timeouts
 PYTHONPATH=src .venv/bin/python -m coachmodel.timeout_audit
 # Per-coach audit: what each coach's foul-trouble handling costs (about 3 minutes)
