@@ -70,12 +70,24 @@ Phases:
 - 2026-10-27: Derek completed the CS 124 lesson "Discuss Ideas, Not Implementations" (all four steps).
 - 2026-10-27: **Forecast checks for a predictive scout page** (Derek's request: pick a coach and game state, see likely moves with confidence; must beat baselines on unseen games before any page work). `coachmodel.forecast_check`, 2025-26 held out: timeouts beat the coach's own average by 23.3% and the league model by 0.55% (0.40 to 0.70); subs 17.8% and 1.28% (1.17 to 1.40). Derek pointed out the coach-average baseline ignores game state, so the league model is the comparison that matters. `coachmodel.coach_signal`: coach habits are reliable (split-half correlation 0.95 timeouts, 0.94 subs; every coach 10%+ from average in both halves points the same way) but concentrated: 22 of 49 coaches clearly differ for timeouts (middle half 0.87x to 1.16x), 12 of 49 for subs (0.94x to 1.10x). Ranked list of who comes out: top pick right 52.8% (league model 49.6%, random 28.5%). 2025-26 subs are underpredicted in every calibration bin (coaches subbed more that season). Recommendation to Derek: lead the page with the game-state forecast and flag only coaches who clearly differ; first add a current-season league-rate adjustment. 80 tests. Waiting on Derek's decision.
 
+- 2026-10-28: Derek completed the CS 124 lesson "Correct It, Out Loud, Early" (all four steps).
+- 2026-10-28: **Season weighting** (`coachmodel.season_replay`). A coach-season effect on top of each coach's long-run habit, partially pooled with the measured drift as its spread, so this season counts more as its games accumulate and past seasons always stay in. Replay of 2025-26 a month at a time (refit on earlier games only, same games for both forecasts): timeouts +0.04% log loss (-0.007% to +0.09%): **no measurable difference**; subs +0.11% (+0.06% to +0.16%): a small measured gain, though October got worse (-0.39%, not yet explained). Sub calibration bins under the observed rate: 5 of 10 without, 1 of 10 with, so the league-wide season shift is not needed (Derek's condition). Kept for both tasks: for subs because the replay shows a gain, for timeouts because the drift-based design is sound, not because the replay showed it works.
+- 2026-10-28: **"Most likely next moves" card** leads each coach's report: his top 3 moves at the next stoppage of a close game (within 5 points, last 6 minutes of the 4th, his latest season, playoffs included), each with a 95% range and the average coach's chance; a tag only where his usual habit clearly differs from the league. Close-game numbers are two constants in `scout_report.py`. Existing page numbers unchanged (largest change 0.0006).
+- 2026-11-03: Derek completed the CS 124 lesson "Validate What It Built" (all four steps).
+- 2026-11-03: **Team-first coach picker** (classmate feedback: team names next to coaches, boxes instead of a dropdown, easier for non-fans). 30 boxes, one per team, with the full team name, current coach (from `data/head_coaches.csv`, so interims Splitter and Borrego) and his games; clicking highlights the box and scrolls to his report; links like `#Steve%20Kerr` still work.
+- 2026-11-03: **League tag threshold** (Derek's red-green change): a tagged move within 2 percentage points of the league reads "about the same as the league" (16 of 44 tagged moves); 2 or more keeps "more/less often". The tag has its own row so it never forces sideways scrolling.
+- 2026-11-04: Derek completed the CS 124 lesson "Say What You Saw" (all four steps).
+- 2026-11-04: **Former coaches collapsed** into a "Former coaches (19)" section that opens on click, or by itself from a link to a former coach. Derek tried the page and said it works. 90 tests.
+
 ## Next
 
-1. **Predictive scout page** (layout chosen by Derek: build a situation, starting from common situations; tendency maps later). Pending Derek's decision on leading with the game-state forecast and on adding a current-season adjustment first.
-2. **Keep making the models statistically stronger** (Derek, 2026-10-19: the page is not the end). Done: honest ranges. Candidates: a fully Bayesian check on a subsample; whether drift differs by coach; the foul-trouble open questions below.
-3. Foul-trouble audit, open questions: starters may be worth more in close late games; RAPM shrinkage understates starter-over-bench gaps (a box-score prior would help); test Derek's targeting idea directly (do opponents attack a player in foul trouble?).
-4. Timeouts remaining in overtime and the 4th-quarter limits (max 4 in Q4, max 2 after 3:00).
+1. **A more interesting, engaging, dynamic page** (Derek, 2026-11-04). Waiting on: what done looks like, which app or site it should feel closer to, and whether it is for non-fans (fewer words, plainer) or fans (more charts and data). Known issues from Derek's and Claude's looks: on a phone the report sits about 2,950 px down behind the team boxes with no way back up; the card leads with jargon ("next stoppage", "95% range", "GSW") and never says why a timeout or sub matters; the report is almost all text.
+2. **Game prediction** (classmate feedback, Derek wants it): predict this season's games from the model. Needs its own baseline test (for example the better record wins) before it goes on the page. Head-to-head coach comparison was also suggested.
+3. **Turn the hand-run checks into tests with pass lines** (Derek's plan, 2026-11-03): held-out log loss must beat the league model, ranges must stay honest, calibration within a set limit; save the key numbers to a file each run; a test that page probabilities match the Python model; page tests in a real browser. Decide first whether "close game" should include playoffs.
+4. Explain why season weighting made October substitutions worse (-0.39%).
+5. **Keep making the models statistically stronger** (Derek, 2026-10-19: the page is not the end). Candidates: a fully Bayesian check on a subsample; whether drift differs by coach; the foul-trouble open questions below.
+6. Foul-trouble audit, open questions: starters may be worth more in close late games; RAPM shrinkage understates starter-over-bench gaps (a box-score prior would help); test Derek's targeting idea directly (do opponents attack a player in foul trouble?).
+7. Timeouts remaining in overtime and the 4th-quarter limits (max 4 in Q4, max 2 after 3:00).
 
 ## Decisions
 
@@ -191,6 +203,12 @@ Phases:
 - 2026-10-11: Team fouls are counted from foul rows, not read from the T# text, because the
   feed stops printing T# once a team reaches the penalty (shows PN instead).
 
+- 2026-10-28: Derek led the page with the coach's most likely moves and asked for this season to count more, weighted up as games accumulate, without dropping past seasons. He rejected adding a league-wide season shift in the same step: "we will not know which one improved the log loss." It was held until the replay showed it was not needed.
+- 2026-10-28: Season weight comes from the already-measured drift (a coach-season level with spread 0.105 / 0.176) rather than a hand-picked schedule; Derek liked that it is not "a schedule picked by hand." Close game: within 5 points, last 6 minutes of the 4th (Derek accepted; kept in one place).
+- 2026-10-28: Derek corrected the reporting rule: a gain whose range includes zero is "no measurable difference", not "a help".
+- 2026-11-03: First change from classmate feedback is the team-first picker, before game prediction: every visitor hits the picker, and a non-fan knows "the Lakers", not the coach's name. Current coaches only in the main grid; a coach who moved appears once, under his current team; no search box.
+- 2026-11-03: Tag cutoff of 2 percentage points is Derek's call ("a gap under 2 points ... about the same"); he wants someone who knows basketball to say whether it feels right. Rounded to a tenth of a point so 12% vs 10% counts as exactly 2.
+
 ## Problems
 
 - 2026-10-11: PlayByPlayV3 timeouts all have subType "Regular" (plus "Coach Challenge"), so
@@ -206,3 +224,6 @@ Phases:
   ("Jemison" vs "Jemison III"). Fixed with a 4th tier against season rosters; 0.02% remain.
 - 2026-10-11: nba_api data frames contain NaN, and json.dumps writes it as invalid JSON. Save
   with DataFrame.to_json, which writes null.
+- 2026-11-03: The clicked team box was not highlighted in a real browser although the tests passed: the tests' fake browser stores attributes as strings, a real one as objects. Found by driving the page in a browser; fixed by tracking boxes by coach name. Lesson: page tests in the fake browser can pass while the page is wrong.
+- 2026-11-03: Keeping the longer tag on one line made the page scroll sideways on narrow screens; fixed by giving the tag its own row in each move.
+- 2026-11-03: Derek could not open the page to check it: the browser pane cannot open local files. Fixed by opening it in his own browser and serving `docs/` on the local network for his phone.

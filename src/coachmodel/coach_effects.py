@@ -55,7 +55,9 @@ CHOSEN_TAUS = {
 # Season-to-season change in a coach's true effect (sd in log-odds), estimated by
 # coachmodel.range_check on 2022-23 to 2025-26.
 SEASON_DRIFT_SD = {"timeout": 0.105, "substitution": 0.176}
-LEVEL_COLUMNS = {"coach": "coach_name", "stint": "stint", "player": "person_id"}
+# "season" is a coach's departure from his long-run habit in one season; its spread is
+# SEASON_DRIFT_SD, so it is weighted more as that season's games accumulate.
+LEVEL_COLUMNS = {"coach": "coach_name", "stint": "stint", "player": "person_id", "season": "coach_season"}
 CROSS_VALIDATION_FOLDS = 5
 BOOTSTRAP_SAMPLES = 2000
 
@@ -191,6 +193,7 @@ def load_task_rows(connection: duckdb.DuckDBPyConnection, task) -> pd.DataFrame:
     teams = dict(connection.sql("SELECT DISTINCT home_team_id, home_team FROM games").fetchall())
     frame = frame[frame["coach_name"].notna()].reset_index(drop=True)
     frame["stint"] = frame["coach_name"] + " (" + frame["team_id"].map(teams) + ")"
+    frame["coach_season"] = frame["coach_name"] + " " + frame["season"]
     return frame
 
 
@@ -236,11 +239,17 @@ def tendency_and_season_uncertainty(model: GroupEffects, rows: pd.DataFrame, off
     return tendency, np.sqrt(tendency ** 2 + SEASON_DRIFT_SD[task_name] ** 2)
 
 
-def fit_on_all_games(connection: duckdb.DuckDBPyConnection, task_name: str):
+def season_weighted_taus(task_name: str) -> dict[str, float]:
+    """The chosen spreads plus a coach-season effect whose spread is the measured drift."""
+    return {**CHOSEN_TAUS[task_name], "season": SEASON_DRIFT_SD[task_name]}
+
+
+def fit_on_all_games(connection: duckdb.DuckDBPyConnection, task_name: str, taus: dict[str, float] | None = None):
     """Pooled model plus group effects fit on every game, with the spreads chosen in the
-    full-season test. Returns (group effects model, rows, pooled log-odds)."""
+    full-season test unless others are given. Returns (group effects model, rows, pooled
+    log-odds)."""
     task = TASKS[task_name]
-    taus = CHOSEN_TAUS[task_name]
+    taus = taus or CHOSEN_TAUS[task_name]
     rows = load_task_rows(connection, task)
     offset = pooled_log_odds(build_model(task).fit(rows, rows[task.label]), rows)
     columns = {level: LEVEL_COLUMNS[level] for level in taus}

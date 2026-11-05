@@ -82,6 +82,8 @@ PYTHONPATH=src .venv/bin/python -m coachmodel.timeout_value
 PYTHONPATH=src .venv/bin/python -m coachmodel.forecast_check --task timeout
 # How strong are coach habits? Size, split-half reliability, calibration on 2025-26
 PYTHONPATH=src .venv/bin/python -m coachmodel.coach_signal --task timeout
+# Does weighting this season more help? Month-by-month replay of 2025-26 (subs take about an hour)
+PYTHONPATH=src .venv/bin/python -m coachmodel.season_replay --task timeout
 # Per-coach timeout audit: cost of arriving at the end of close games short of timeouts
 PYTHONPATH=src .venv/bin/python -m coachmodel.timeout_audit
 # Per-coach audit: what each coach's foul-trouble handling costs (about 3 minutes)
@@ -97,7 +99,7 @@ Feature queries live in `sql/models/` (read by the model code, not part of the b
 ## Scout report page
 
 ```bash
-# Fit the models on every game and build docs/index.html (about 15 minutes)
+# Fit the models on every game and build docs/index.html (about 40 minutes)
 PYTHONPATH=src .venv/bin/python -m coachmodel.scout_report
 # Restyle only: rebuild the page from the cached results in data/scout_data.json
 PYTHONPATH=src .venv/bin/python -m coachmodel.scout_report --render

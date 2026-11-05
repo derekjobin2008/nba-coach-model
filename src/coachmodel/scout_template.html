@@ -32,11 +32,20 @@
   header h1 { margin: 0; font-size: 2rem; letter-spacing: -0.02em; }
   header p { margin: 6px 0 0; color: var(--muted); }
   .picker { margin: 24px 0 16px; }
-  .picker label { display: block; font-weight: 600; margin-bottom: 6px; }
-  select {
-    width: 100%; font: inherit; font-size: 1.05rem; padding: 12px; border-radius: 10px;
-    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  .picker h2 { margin: 0 0 10px; font-size: 1.1rem; }
+  .former-group[open] summary { margin-bottom: 10px; }
+  .coach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+  .coach-box {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 64px; padding: 10px 12px;
+    font: inherit; text-align: left; color: var(--ink); background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
   }
+  .coach-box:hover { border-color: var(--accent); }
+  .coach-box:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .coach-box[aria-pressed="true"] { border: 2px solid var(--accent); background: var(--accent-soft); padding: 9px 11px; }
+  .coach-box .team { font-weight: 600; line-height: 1.25; }
+  .coach-box .who { color: var(--muted); font-size: 0.88rem; }
+  .former .coach-box { min-height: 0; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
   .card h2 { margin: 0; font-size: 1.5rem; }
   .teams-line { color: var(--muted); margin: 2px 0 0; }
@@ -59,6 +68,16 @@
   .scale span:first-child { transform: none; }
   .scale span:last-child { transform: translateX(-100%); }
   .verdict-line { margin: 8px 0 0; font-weight: 600; }
+  .moves { list-style: none; margin: 12px 0 4px; padding: 0; display: grid; gap: 10px; }
+  .move { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 4px 10px; align-items: baseline;
+          padding: 12px 14px; border-radius: 10px; background: var(--bg); }
+  .move .rank { font-weight: 700; color: var(--accent); font-size: 1.1rem; }
+  .move .name { font-weight: 600; }
+  .move .chance { font-weight: 700; font-size: 1.15rem; font-variant-numeric: tabular-nums; text-align: right; }
+  .move .compare { grid-column: 2 / 4; color: var(--muted); font-size: 0.88rem; }
+  .move .flag { grid-column: 2 / 4; justify-self: start; }
+  .flag { display: inline-block; padding: 1px 8px; border-radius: 999px;
+          background: var(--accent-soft); color: var(--accent); font-size: 0.78rem; font-weight: 600; }
   .note { margin: 2px 0 0; color: var(--muted); font-size: 0.85rem; }
   .bars { display: grid; gap: 12px; margin-top: 12px; }
   .bar-label { font-size: 0.95rem; margin-bottom: 4px; }
@@ -86,8 +105,12 @@
   </header>
 
   <div class="picker">
-    <label for="coach">Pick a coach</label>
-    <select id="coach"></select>
+    <h2>Pick a team to see its head coach</h2>
+    <div class="coach-grid" id="current-coaches"></div>
+    <details class="former-group" id="former-group">
+      <summary id="former-summary">Former coaches</summary>
+      <div class="coach-grid former" id="former-coaches"></div>
+    </details>
   </div>
 
   <article class="card" id="card" aria-live="polite"></article>
@@ -113,6 +136,17 @@
 
 <script>
 const DATA = __SCOUT_DATA__;
+
+const TEAM_NAMES = {
+  ATL: "Atlanta Hawks", BKN: "Brooklyn Nets", BOS: "Boston Celtics", CHA: "Charlotte Hornets",
+  CHI: "Chicago Bulls", CLE: "Cleveland Cavaliers", DAL: "Dallas Mavericks", DEN: "Denver Nuggets",
+  DET: "Detroit Pistons", GSW: "Golden State Warriors", HOU: "Houston Rockets", IND: "Indiana Pacers",
+  LAC: "LA Clippers", LAL: "Los Angeles Lakers", MEM: "Memphis Grizzlies", MIA: "Miami Heat",
+  MIL: "Milwaukee Bucks", MIN: "Minnesota Timberwolves", NOP: "New Orleans Pelicans", NYK: "New York Knicks",
+  OKC: "Oklahoma City Thunder", ORL: "Orlando Magic", PHI: "Philadelphia 76ers", PHX: "Phoenix Suns",
+  POR: "Portland Trail Blazers", SAC: "Sacramento Kings", SAS: "San Antonio Spurs", TOR: "Toronto Raptors",
+  UTA: "Utah Jazz", WAS: "Washington Wizards",
+};
 
 const AXIS_MIN = 0.5, AXIS_MAX = 2.0;  // ratio axis, log scale: half as often to twice as often
 
@@ -190,6 +224,52 @@ function decisionSection(title, noun, stats, everyone, note) {
   return section;
 }
 
+function percent(share) {
+  const value = share * 100;
+  return value < 1 ? `${value.toFixed(1)}%` : `${Math.round(value)}%`;
+}
+
+const SAME_AS_LEAGUE_POINTS = 2;  // a gap under this many percentage points is "about the same"
+
+function leagueTag(move) {
+  // Rounded to a tenth of a point, so 12% vs 10% counts as exactly 2, not 1.999...
+  const gap = Math.round((move.probability - move.league) * 1000) / 10;
+  if (Math.abs(gap) < SAME_AS_LEAGUE_POINTS) return "about the same as the league";
+  return `${gap > 0 ? "more" : "less"} often than the league`;
+}
+
+function movesSection(coach) {
+  const section = element("section");
+  const close = DATA.close_game;
+  section.append(element("h3", {}, "Most likely next moves"));
+  const moves = coach.likely_moves;
+  if (!moves || !moves.moves.length) {
+    section.append(element("p", {class: "detail"}, "Not enough close-game stoppages to rank his moves."));
+    return section;
+  }
+  section.append(element("p", {class: "detail"},
+    `At the next stoppage of a close game (within ${close.max_margin} points, last ` +
+    `${close.max_seconds_left / 60} minutes of the 4th), from his ${moves.stoppages.toLocaleString()} ` +
+    `such stoppages in ${moves.season}. Chance he makes each move, with a 95% range.`));
+  const list = element("ol", {class: "moves"});
+  moves.moves.forEach((move, index) => {
+    const item = element("li", {class: "move"});
+    item.append(element("span", {class: "rank"}, String(index + 1)));
+    const name = element("span", {class: "name"}, move.label);
+    item.append(name, element("span", {class: "chance"}, percent(move.probability)));
+    if (move.differs) item.append(element("span", {class: "flag"}, leagueTag(move)));
+    item.append(element("span", {class: "compare"},
+      `Range ${percent(move.low)} to ${percent(move.high)} · average coach ${percent(move.league)}` +
+      (move.kind === "substitution" ? " · when he is on the floor" : "")));
+    list.append(item);
+  });
+  section.append(list);
+  section.append(element("p", {class: "note"},
+    "Flagged moves are where this coach's usual habit clearly differs from an average coach. " +
+    "Unflagged ones are mostly the game situation, which any coach would respond to the same way."));
+  return section;
+}
+
 function shareBar(label, coachShare, leagueShare) {
   const wrapper = element("div");
   wrapper.append(element("div", {class: "bar-label"}, label));
@@ -257,8 +337,26 @@ function teamsSection(coach) {
   return section;
 }
 
+const coachBoxes = new Map();  // coach name -> his box
+let currentTeamOf = {};  // current coach's name -> his team
+
+function coachBox(coach, team, detail) {
+  const box = element("button", {type: "button", class: "coach-box", "data-coach": coach.name, "aria-pressed": "false"});
+  box.append(element("span", {class: "team"}, TEAM_NAMES[team] || team),
+             element("span", {class: "who"}, `${coach.name} · ${detail}`));
+  box.addEventListener("click", () => {
+    showCoach(coach.name);
+    const card = document.getElementById("card");
+    if (card.scrollIntoView) card.scrollIntoView({behavior: "smooth", block: "start"});
+  });
+  coachBoxes.set(coach.name, box);
+  return box;
+}
+
 function showCoach(name) {
   const coach = DATA.coaches.find(candidate => candidate.name === name);
+  coachBoxes.forEach((box, boxName) => box.setAttribute("aria-pressed", String(boxName === name)));
+  if (coach && !(coach.name in currentTeamOf)) document.getElementById("former-group").open = true;
   const card = document.getElementById("card");
   card.replaceChildren();
   if (!coach) {
@@ -270,6 +368,7 @@ function showCoach(name) {
     coach.teams.map(team => `${team.team} ${team.seasons}`).join(" · ") + ` · ${coach.games} games`));
   const timeouts = DATA.coaches.map(other => other.timeouts.ratio);
   const substitutions = DATA.coaches.map(other => other.substitutions.ratio);
+  card.append(movesSection(coach));
   card.append(
     decisionSection("Timeouts", "timeout calls", coach.timeouts, timeouts,
       "Excludes TV timeouts the scorer forces."),
@@ -288,14 +387,24 @@ function lastName(name) {
 function start() {
   document.getElementById("data-line").textContent =
     `Regular seasons ${DATA.seasons}, ${DATA.games.toLocaleString()} games.`;
-  const select = document.getElementById("coach");
-  const byName = [...DATA.coaches].sort((a, b) => lastName(a.name).localeCompare(lastName(b.name)));
-  byName.forEach(coach => select.append(element("option", {value: coach.name}, coach.name)));
+  currentTeamOf = Object.fromEntries(Object.entries(DATA.current_coaches).map(([team, name]) => [name, team]));
+  const byName = name => DATA.coaches.find(coach => coach.name === name);
+  Object.keys(DATA.current_coaches)
+    .sort((a, b) => (TEAM_NAMES[a] || a).localeCompare(TEAM_NAMES[b] || b))
+    .filter(team => byName(DATA.current_coaches[team]))
+    .forEach(team => document.getElementById("current-coaches").append(
+      coachBox(byName(DATA.current_coaches[team]), team, `${byName(DATA.current_coaches[team]).games} games`)));
+  const formerCoaches = DATA.coaches.filter(coach => !(coach.name in currentTeamOf));
+  document.getElementById("former-summary").textContent = `Former coaches (${formerCoaches.length})`;
+  formerCoaches
+    .sort((a, b) => lastName(a.name).localeCompare(lastName(b.name)))
+    .forEach(coach => {
+      const last = coach.teams[coach.teams.length - 1];
+      document.getElementById("former-coaches").append(coachBox(coach, last.team, `last coached ${last.seasons.split(" to ").pop()}`));
+    });
   const fromLink = decodeURIComponent(location.hash.slice(1));
   const mostGames = [...DATA.coaches].sort((a, b) => b.games - a.games)[0].name;
-  select.value = DATA.coaches.some(coach => coach.name === fromLink) ? fromLink : mostGames;
-  select.addEventListener("change", () => showCoach(select.value));
-  showCoach(select.value);
+  showCoach(DATA.coaches.some(coach => coach.name === fromLink) ? fromLink : mostGames);
 }
 
 start();
