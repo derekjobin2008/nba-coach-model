@@ -105,3 +105,15 @@ def test_a_picked_former_coach_shows_in_the_strip_and_nowhere_else(page_url, tmp
     assert former_picked == {"former": [former], "heading": False}
     assert current_picked == {"former": [], "heading": False}
     assert all_shown["heading"] is True  # "Show all" brings back the former coaches' heading
+
+
+def test_changing_the_coach_in_the_address_bar_switches_the_card(page_url, tmp_path):
+    url, data = page_url
+    current = set(data["current_coaches"].values())
+    former = next(coach["name"] for coach in data["coaches"] if coach["name"] not in current)
+    [switched] = in_chrome([open_page(url, PHONE, link=data["current_coaches"]["CHI"].replace(" ", "%20")), {"run": f"""
+        location.hash = {json.dumps("#" + former.replace(" ", "%20"))};
+        await new Promise(resolve => setTimeout(resolve, 300));
+        return [document.querySelector('.coach-head h2').textContent,
+                {PICKED}.map(box => box.dataset.coach), document.getElementById('picker').className];"""}], tmp_path)
+    assert switched == [former, [former], "picker compact"]

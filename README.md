@@ -82,6 +82,9 @@ PYTHONPATH=src .venv/bin/python -m coachmodel.timeout_value
 PYTHONPATH=src .venv/bin/python -m coachmodel.forecast_check --task timeout
 # How strong are coach habits? Size, split-half reliability, calibration on 2025-26
 PYTHONPATH=src .venv/bin/python -m coachmodel.coach_signal --task timeout
+# The model benchmark: score every rung (league rate -> coach model -> season-weighted) on the
+# frozen 2025-26 test and append the results to reports/benchmark.csv (subs take about an hour)
+PYTHONPATH=src .venv/bin/python -m coachmodel.benchmark --task timeout
 # Does weighting this season more help? Month-by-month replay of 2025-26 (subs take about an hour)
 PYTHONPATH=src .venv/bin/python -m coachmodel.season_replay --task timeout
 # Per-coach timeout audit: cost of arriving at the end of close games short of timeouts
@@ -124,5 +127,9 @@ Tests build the pipeline from three saved games in `tests/fixtures/`, so they ne
 Page tests run the page's JavaScript with Node.js; `tests/test_page_in_browser.py` also opens the
 page in a headless Google Chrome at phone and laptop sizes (set `CHROME=/path/to/chrome` if it is
 not in the usual place). Both skip when Node.js or Chrome is missing.
+`tests/test_page_matches_model.py` refits the timeout model on the full database (about 15
+seconds) and fails if the published page's numbers are stale; rebuild the page to fix it.
+`tests/test_benchmark.py` fails if the latest recorded coach model no longer beats the league
+model, or if a recorded run used different test games.
 `tests/test_full_data.py` also checks the full database against public facts (e.g. a fired
 coach's record) and skips until the data is downloaded and built.

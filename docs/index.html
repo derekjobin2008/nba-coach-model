@@ -560,10 +560,14 @@ function start() {
     picker.setAttribute("class", "picker");
     if (picker.scrollIntoView) picker.scrollIntoView({behavior: "smooth", block: "start"});
   });
-  const fromLink = decodeURIComponent(location.hash.slice(1));
+  const fromLink = () => decodeURIComponent(location.hash.slice(1));
+  const isCoach = name => DATA.coaches.some(coach => coach.name === name);
   const mostGames = [...DATA.coaches].sort((a, b) => b.games - a.games)[0].name;
-  if (DATA.coaches.some(coach => coach.name === fromLink)) openCoach(fromLink);
+  if (isCoach(fromLink())) openCoach(fromLink());
   else showCoach(mostGames);
+  // A new coach typed or pasted into the address bar of an open page opens like a tap.
+  // (Picking a coach rewrites the address with replaceState, which does not fire this.)
+  if (globalThis.addEventListener) addEventListener("hashchange", () => { if (isCoach(fromLink())) openCoach(fromLink()); });
 }
 
 start();
