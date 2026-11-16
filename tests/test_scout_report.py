@@ -256,3 +256,16 @@ def test_a_shared_link_scrolls_to_the_card_and_shrinks_the_grid_like_a_tap(link)
 def test_opening_the_page_without_a_link_stays_on_the_full_grid():
     output = run_page(render(DATA), then='console.log(scrolledTo.length); console.log(nodes.picker.getAttribute("class"))')
     assert output.split("\n")[:2] == ["0", "picker"]
+
+
+@needs_node
+def test_where_he_stands_shows_one_dot_per_coach_and_labels_his_own():
+    card = run_page(render(DATA))
+    assert "Where he stands: each dot is one of 3 coaches" in card
+    assert "Michael Malone +53%" in card
+    output = run_page(render(DATA), then="""
+        const all = node => [node, ...node.children.flatMap(all)];
+        const strips = all(nodes.card).filter(node => node.getAttribute && node.getAttribute("class") === "field-strip");
+        console.log(strips.length, strips.map(strip => strip.children.filter(dot => dot.getAttribute("class") === "other").length).join(","),
+                    strips[0].getAttribute("aria-label"))""")
+    assert output.strip() == ("2 3,3 Michael Malone makes 53% more timeout calls than average, the most of 3 coaches")

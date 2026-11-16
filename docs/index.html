@@ -118,6 +118,16 @@
   .track .average { position: absolute; top: -4px; width: 2px; height: 22px; margin-left: -1px; background: var(--ink); }
   .track .dot { position: absolute; top: -3px; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%;
                 background: var(--ink); border: 3px solid var(--card); }
+  .field { margin: 12px 0 2px; }
+  .field-title { font-size: 0.85rem; color: var(--muted); }
+  .field-strip { position: relative; height: 84px; margin-top: 4px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .field-strip .average { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); opacity: 0.5; }
+  .field-strip .other { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%;
+                        background: var(--league); }
+  .field-strip .me { position: absolute; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
+                     background: var(--team-bar); border: 3px solid var(--card); box-shadow: 0 0 0 1px var(--team-bar); }
+  .field-label { position: relative; height: 20px; font-size: 0.85rem; font-weight: 700; }
+  .field-label span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
   .scale { position: relative; height: 18px; font-size: 0.75rem; color: var(--muted); }
   .scale span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
   .scale span:first-child { transform: none; }
@@ -287,23 +297,50 @@ function scale() {
   return labels;
 }
 
+const FIELD_LANES = [0, -1, 1, -2, 2, -3, 3, -4, 4];  // rows above and below the middle, filled in this order
+const FIELD_GAP = 2.6;  // percent of the width two dots in one row must keep apart
+
+// Where he stands: one dot per coach on the same scale, his own dot large and labeled.
+function fieldChart(name, ratio, everyone, noun, rank) {
+  const wrapper = element("div", {class: "field"});
+  wrapper.append(element("div", {class: "field-title"}, `Where he stands: each dot is one of ${everyone.length} coaches`));
+  const label = element("div", {class: "field-label"});
+  const at = Math.min(Math.max(axisPosition(ratio), 12), 88);  // keep the label on screen near the edges
+  label.append(element("span", {style: `left:${at}%`}, `${name} ${signedPercent(ratio)}`));
+  const strip = element("div", {class: "field-strip", role: "img",
+    "aria-label": `${name} makes ${moreOrFewer(ratio, noun)} average, ${rankPhrase(rank, everyone.length)}`});
+  strip.append(element("div", {class: "average", style: `left:${axisPosition(1)}%`}));
+  const laneEnds = new Map();  // row -> where its last dot sits
+  [...everyone].sort((a, b) => a - b).forEach(other => {
+    const x = axisPosition(other);
+    const lane = FIELD_LANES.find(row => !laneEnds.has(row) || x - laneEnds.get(row) >= FIELD_GAP)
+      ?? FIELD_LANES[FIELD_LANES.length - 1];
+    laneEnds.set(lane, x);
+    strip.append(element("div", {class: "other", style: `left:${x}%;top:${50 + lane * 10}%`}));
+  });
+  strip.append(element("div", {class: "me", style: `left:${axisPosition(ratio)}%`}));
+  wrapper.append(label, strip, scale());
+  return wrapper;
+}
+
 function rankPhrase(rank, total) {
   if (rank === 1) return `the most of ${total} coaches`;
   if (rank === total) return `the fewest of ${total} coaches`;
   return rank <= total / 2 ? `${ordinal(rank)} most of ${total} coaches` : `${ordinal(total - rank + 1)} fewest of ${total} coaches`;
 }
 
-function decisionSection(title, noun, stats, everyone, note, id) {
+function decisionSection(name, title, noun, stats, everyone, note, id) {
   const section = element("section", {id});
   section.append(element("h3", {}, title));
   section.append(element("p", {class: "headline"},
     `Makes ${moreOrFewer(stats.ratio, noun)} an average coach in the same situations.`));
+  const rank = everyone.filter(other => other > stats.ratio).length + 1;
+  section.append(fieldChart(name, stats.ratio, everyone, noun, rank));
   const ranges = element("div", {class: "ranges"});
   ranges.append(rangeRow("Usual habit", stats.tendency_low, stats.tendency_high, stats.ratio),
                 rangeRow("One season", stats.low, stats.high, null), scale());
   section.append(ranges);
   const clearlyMore = stats.tendency_low > 1, clearlyFewer = stats.tendency_high < 1;
-  const rank = everyone.filter(other => other > stats.ratio).length + 1;
   section.append(element("p", {class: "verdict-line"},
     `${clearlyMore ? "Clearly more than average" : clearlyFewer ? "Clearly fewer than average" : "Not clearly different from average"}` +
     ` · ${rankPhrase(rank, everyone.length)}`));
@@ -523,9 +560,9 @@ function showCoach(name) {
   const substitutions = DATA.coaches.map(other => other.substitutions.ratio);
   card.append(movesSection(coach));
   card.append(
-    decisionSection("Timeouts", "timeout calls", coach.timeouts, timeouts,
+    decisionSection(coach.name, "Timeouts", "timeout calls", coach.timeouts, timeouts,
       "Excludes TV timeouts the scorer forces.", "timeouts-detail"),
-    decisionSection("Substitutions", "substitutions", coach.substitutions, substitutions,
+    decisionSection(coach.name, "Substitutions", "substitutions", coach.substitutions, substitutions,
       "Accounts for which players he has.", "substitutions-detail"),
     foulSection(coach));
   if (coach.teams.length > 1) card.append(teamsSection(coach));

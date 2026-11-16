@@ -117,3 +117,16 @@ def test_changing_the_coach_in_the_address_bar_switches_the_card(page_url, tmp_p
         return [document.querySelector('.coach-head h2').textContent,
                 {PICKED}.map(box => box.dataset.coach), document.getElementById('picker').className];"""}], tmp_path)
     assert switched == [former, [former], "picker compact"]
+
+
+@pytest.mark.parametrize("section", ["timeouts-detail", "substitutions-detail"])
+def test_every_coach_shows_as_a_visible_dot_in_the_where_he_stands_chart(page_url, tmp_path, section):
+    url, data = page_url
+    [chart] = in_chrome([open_page(url, PHONE), {"run": f"""
+        const dots = [...document.querySelectorAll('#{section} .field-strip .other')].map(dot => dot.getBoundingClientRect());
+        const strip = document.querySelector('#{section} .field-strip').getBoundingClientRect();
+        let hidden = 0;
+        dots.forEach((a, i) => dots.slice(i + 1).forEach(b => {{ if (Math.hypot(a.x - b.x, a.y - b.y) < 7) hidden++; }}));
+        const outside = dots.filter(d => d.top < strip.top || d.bottom > strip.bottom || d.left < strip.left - 4 || d.right > strip.right + 4).length;
+        return [dots.length, hidden, outside, document.querySelectorAll('#{section} .field-strip .me').length];"""}], tmp_path)
+    assert chart == [len(data["coaches"]), 0, 0, 1]
