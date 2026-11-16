@@ -121,5 +121,8 @@ files `.claude/`, `.claude-sessions/`, `.githooks/`, `CLAUDE.md`) to the git rem
 ```
 
 Tests build the pipeline from three saved games in `tests/fixtures/`, so they need no download.
+Page tests run the page's JavaScript with Node.js; `tests/test_page_in_browser.py` also opens the
+page in a headless Google Chrome at phone and laptop sizes (set `CHROME=/path/to/chrome` if it is
+not in the usual place). Both skip when Node.js or Chrome is missing.
 `tests/test_full_data.py` also checks the full database against public facts (e.g. a fired
 coach's record) and skips until the data is downloaded and built.

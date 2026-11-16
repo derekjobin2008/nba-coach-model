@@ -17,7 +17,11 @@ from coachmodel.scout_report import latest_close_game, render, without_missing
 FAKE_BROWSER = """
 class Node {
   constructor(tag) { this.tag = tag; this.children = []; this.attributes = {}; this._text = ""; this.listeners = {}; }
-  setAttribute(key, value) { this.attributes[key] = value; }
+  // Like a real browser: values become strings, and node.attributes[name] is an Attr object, not
+  // the value. (Code that compared node.attributes["data-coach"] to a name passed here while it
+  // was broken in every real browser.)
+  setAttribute(key, value) { this.attributes[key] = {name: key, value: String(value)}; }
+  getAttribute(key) { return key in this.attributes ? this.attributes[key].value : null; }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren() { this.children = []; }
   addEventListener(event, handler) { this.listeners[event] = handler; }
@@ -30,9 +34,10 @@ const nodes = {"data-line": new Node("p"), "current-coaches": new Node("div"), "
                "former-group": new Node("details"), "former-summary": new Node("summary"),
                "picker": new Node("div"), "show-all": new Node("button"),
                "card": new Node("article")};
+nodes.picker.setAttribute("class", "picker");  // as in the page's HTML
 function clickCoach(name) {
   [...nodes["current-coaches"].children, ...nodes["former-coaches"].children]
-    .find(box => box.attributes["data-coach"] === name).listeners.click();
+    .find(box => box.getAttribute("data-coach") === name).listeners.click();
 }
 globalThis.document = {createElement: tag => new Node(tag), getElementById: id => nodes[id]};
 globalThis.history = {replaceState() {}};
@@ -156,7 +161,7 @@ def test_coaches_are_picked_by_team_with_former_coaches_kept_apart():
 @needs_node
 def test_clicking_a_team_box_opens_its_coach_and_marks_the_box():
     output = run_page(render(DATA), then='clickCoach("Joe Mazzulla"); console.log(nodes.card.textContent); '
-                      'console.log(nodes["current-coaches"].children[0].attributes["aria-pressed"])')
+                      'console.log(nodes["current-coaches"].children[0].getAttribute("aria-pressed"))')
     assert output.startswith("Joe Mazzulla")
     assert output.strip().endswith("true")
 
@@ -233,21 +238,21 @@ def test_moves_show_this_coach_next_to_an_average_coach():
 
 @needs_node
 def test_picking_a_team_shrinks_the_grid_to_a_strip_and_show_all_brings_it_back():
-    output = run_page(render(DATA), then='console.log(nodes.picker.attributes.class); clickCoach("Joe Mazzulla"); '
-                      'console.log(nodes.picker.attributes.class); nodes["show-all"].listeners.click(); '
-                      'console.log(nodes.picker.attributes.class)')
-    assert output.split("\n")[:3] == ["undefined", "picker compact", "picker"]
+    output = run_page(render(DATA), then='console.log(nodes.picker.getAttribute("class")); clickCoach("Joe Mazzulla"); '
+                      'console.log(nodes.picker.getAttribute("class")); nodes["show-all"].listeners.click(); '
+                      'console.log(nodes.picker.getAttribute("class"))')
+    assert output.split("\n")[:3] == ["picker", "picker compact", "picker"]
 
 
 @needs_node
 @pytest.mark.parametrize("link", ["#Joe%20Mazzulla", "#Wes%20Unseld%20Jr."])  # a current and a former coach
 def test_a_shared_link_scrolls_to_the_card_and_shrinks_the_grid_like_a_tap(link):
     output = run_page(render(DATA), link, then='console.log(scrolledTo.includes(nodes.card)); '
-                      'console.log(nodes.picker.attributes.class)')
+                      'console.log(nodes.picker.getAttribute("class"))')
     assert output.split("\n")[:2] == ["true", "picker compact"]
 
 
 @needs_node
 def test_opening_the_page_without_a_link_stays_on_the_full_grid():
-    output = run_page(render(DATA), then='console.log(scrolledTo.length); console.log(nodes.picker.attributes.class)')
-    assert output.split("\n")[:2] == ["0", "undefined"]
+    output = run_page(render(DATA), then='console.log(scrolledTo.length); console.log(nodes.picker.getAttribute("class"))')
+    assert output.split("\n")[:2] == ["0", "picker"]
