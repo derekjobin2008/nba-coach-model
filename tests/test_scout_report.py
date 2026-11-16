@@ -21,11 +21,14 @@ class Node {
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren() { this.children = []; }
   addEventListener(event, handler) { this.listeners[event] = handler; }
+  scrollIntoView() { scrolledTo.push(this); }
   set textContent(value) { this._text = value; }
   get textContent() { return this._text + this.children.map(child => child.textContent).join(" "); }
 }
+const scrolledTo = [];
 const nodes = {"data-line": new Node("p"), "current-coaches": new Node("div"), "former-coaches": new Node("div"),
                "former-group": new Node("details"), "former-summary": new Node("summary"),
+               "picker": new Node("div"), "show-all": new Node("button"),
                "card": new Node("article")};
 function clickCoach(name) {
   [...nodes["current-coaches"].children, ...nodes["former-coaches"].children]
@@ -116,7 +119,7 @@ def test_link_to_a_coach_and_missing_audit_message():
 @needs_node
 def test_likely_moves_lead_the_card_and_flag_only_coaches_who_differ():
     card = run_page(render(DATA))
-    assert card.index("Most likely next moves") < card.index("Timeouts")
+    assert card.index("Most likely next moves") < card.index("Makes 53% more timeout calls")
     assert "within 5 points, last 6 minutes of the 4th" in card
     assert "Call a timeout" in card and "21%" in card and "Range 17% to 26% · average coach 15%" in card
     assert card.count("often than the league") == 1  # only the timeout move, where his habit clearly differs
@@ -210,3 +213,41 @@ def test_former_coaches_start_hidden_behind_a_heading_with_their_count():
 def test_a_link_to_a_former_coach_opens_the_former_coaches_section():
     output = run_page(render(DATA), "#Michael%20Malone", then='console.log(Boolean(nodes["former-group"].open))')
     assert output.strip() == "true"
+
+
+@needs_node
+def test_report_opens_with_full_team_name_and_three_stat_tiles():
+    card = run_page(render(DATA))
+    assert card.startswith("Michael Malone Denver Nuggets 2021-22 to 2024-25 · 300 games")
+    assert "Timeouts +53% more timeouts than an average coach A real habit" in card
+    assert "Subs −10% fewer subs than an average coach Within normal range" in card
+    assert "Foul trouble −0.47 wins a season from benching players in foul trouble A real effect" in card
+
+
+@needs_node
+def test_moves_show_this_coach_next_to_an_average_coach():
+    card = run_page(render(DATA))
+    assert "This coach" in card and "Average coach" in card
+    assert "What do the ranges mean?" in card
+
+
+@needs_node
+def test_picking_a_team_shrinks_the_grid_to_a_strip_and_show_all_brings_it_back():
+    output = run_page(render(DATA), then='console.log(nodes.picker.attributes.class); clickCoach("Joe Mazzulla"); '
+                      'console.log(nodes.picker.attributes.class); nodes["show-all"].listeners.click(); '
+                      'console.log(nodes.picker.attributes.class)')
+    assert output.split("\n")[:3] == ["undefined", "picker compact", "picker"]
+
+
+@needs_node
+@pytest.mark.parametrize("link", ["#Joe%20Mazzulla", "#Wes%20Unseld%20Jr."])  # a current and a former coach
+def test_a_shared_link_scrolls_to_the_card_and_shrinks_the_grid_like_a_tap(link):
+    output = run_page(render(DATA), link, then='console.log(scrolledTo.includes(nodes.card)); '
+                      'console.log(nodes.picker.attributes.class)')
+    assert output.split("\n")[:2] == ["true", "picker compact"]
+
+
+@needs_node
+def test_opening_the_page_without_a_link_stays_on_the_full_grid():
+    output = run_page(render(DATA), then='console.log(scrolledTo.length); console.log(nodes.picker.attributes.class)')
+    assert output.split("\n")[:2] == ["0", "undefined"]

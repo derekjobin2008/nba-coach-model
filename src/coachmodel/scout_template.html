@@ -5,34 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bench Brain</title>
 <meta name="description" content="How NBA head coaches manage timeouts, substitutions, and foul trouble, compared with an average coach in the same game situations.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap">
 <style>
+  /* "Arena night": navy and slate with an electric blue accent. */
   :root {
-    --bg: #f6f5f1; --card: #ffffff; --ink: #1d1f23; --muted: #646a73; --line: #dfdcd3;
-    --accent: #c4512d; --accent-soft: #f3ddd4; --league: #8a8f98; --good: #2f7d5b; --bad: #b5402a;
-    --range: #c4512d33;
+    --bg: #f3f5f9; --card: #ffffff; --ink: #0f172a; --muted: #5b6475; --line: #d5dbe5;
+    --accent: #1d4ed8; --accent-soft: #dbe6fd; --league: #94a3b8; --good: #15803d; --bad: #b91c1c;
+    --range: #1d4ed833;
+    --display: "Barlow Condensed", "Arial Narrow", -apple-system, BlinkMacSystemFont, sans-serif;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #15171a; --card: #1e2125; --ink: #ecebe7; --muted: #a2a7ae; --line: #33373d;
-      --accent: #ec7a52; --accent-soft: #3a2820; --league: #7d838c; --good: #5fbf8f; --bad: #ef7a62;
-      --range: #ec7a5240;
+      --bg: #0b1220; --card: #131c2e; --ink: #e8edf5; --muted: #94a3b8; --line: #1e2a40;
+      --accent: #60a5fa; --accent-soft: #1a3363; --league: #64748b; --good: #4ade80; --bad: #f87171;
+      --range: #60a5fa40;
     }
   }
   :root[data-theme="dark"] {
-    --bg: #15171a; --card: #1e2125; --ink: #ecebe7; --muted: #a2a7ae; --line: #33373d;
-    --accent: #ec7a52; --accent-soft: #3a2820; --league: #7d838c; --good: #5fbf8f; --bad: #ef7a62;
-    --range: #ec7a5240;
+    --bg: #0b1220; --card: #131c2e; --ink: #e8edf5; --muted: #94a3b8; --line: #1e2a40;
+    --accent: #60a5fa; --accent-soft: #1a3363; --league: #64748b; --good: #4ade80; --bad: #f87171;
+    --range: #60a5fa40;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
-    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font: 16px/1.5 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  h1, h2, .coach-head h2, section h3, .coach-box .team, .tile .label, .tile .value,
+  .move .rank, .move .chance, summary {
+    font-family: var(--display);
   }
   main { max-width: 760px; margin: 0 auto; padding: 28px 16px 48px; }
-  header h1 { margin: 0; font-size: 2rem; letter-spacing: -0.02em; }
+  header h1 { margin: 0; font-size: 2.6rem; font-weight: 800; line-height: 1; text-transform: uppercase; letter-spacing: 0.01em; }
   header p { margin: 6px 0 0; color: var(--muted); }
   .picker { margin: 24px 0 16px; }
-  .picker h2 { margin: 0 0 10px; font-size: 1.1rem; }
+  .picker h2 { margin: 0 0 10px; font-size: 1.35rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
   .former-group[open] summary { margin-bottom: 10px; }
   .coach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
   .coach-box {
@@ -43,14 +52,54 @@
   .coach-box:hover { border-color: var(--accent); }
   .coach-box:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .coach-box[aria-pressed="true"] { border: 2px solid var(--accent); background: var(--accent-soft); padding: 9px 11px; }
-  .coach-box .team { font-weight: 600; line-height: 1.25; }
+  .coach-box .team { font-size: 1.1rem; font-weight: 700; line-height: 1.15; letter-spacing: 0.01em; }
   .coach-box .who { color: var(--muted); font-size: 0.88rem; }
   .former .coach-box { min-height: 0; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
-  .card h2 { margin: 0; font-size: 1.5rem; }
-  .teams-line { color: var(--muted); margin: 2px 0 0; }
+  .show-all { display: none; }
+  .picker.compact {
+    position: sticky; top: 0; z-index: 5; margin: 0 -16px 12px; padding: 8px 16px;
+    background: var(--bg); border-bottom: 1px solid var(--line);
+  }
+  .picker.compact h2, .picker.compact .former-group { display: none; }
+  .picker.compact .coach-grid {
+    grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: max-content;
+    overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin;
+  }
+  .picker.compact .coach-box { min-height: 0; padding: 6px 10px; }
+  .picker.compact .coach-box[aria-pressed="true"] { padding: 5px 9px; }
+  .picker.compact .coach-box .who { display: none; }
+  .picker.compact .show-all {
+    display: inline-block; margin-top: 6px; padding: 4px 0; font: inherit; font-size: 0.9rem; font-weight: 600;
+    color: var(--accent); background: none; border: none; cursor: pointer;
+  }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; overflow: hidden; }
+  .card, .card section { scroll-margin-top: 76px; }  /* clear the sticky team strip */
+  /* The coach's bar uses his team color; in dark mode the accent, since dark team colors turn gray when lightened. */
+  .card { --team-bar: var(--team, var(--accent)); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .card { --team-bar: var(--accent); }
+  }
+  :root[data-theme="dark"] .card { --team-bar: var(--accent); }
+  .card.entering { animation: rise 0.35s ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .coach-head { margin: -20px -20px 0; padding: 22px 20px 18px; background: var(--team, var(--accent)); color: #fff; }
+  .coach-head h2 { margin: 0; font-size: 2.3rem; font-weight: 800; line-height: 1.05; text-transform: uppercase; letter-spacing: 0.01em; }
+  .teams-line { margin: 4px 0 0; opacity: 0.88; }
+  .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+  .tile {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px; min-width: 0;
+    font: inherit; text-align: left; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 12px; cursor: pointer;
+  }
+  .tile:hover { border-color: var(--accent); }
+  .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .tile .label { font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .tile .value { font-size: 2.3rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .tile .meaning { font-size: 0.85rem; line-height: 1.3; }
+  .tile .chip { margin-top: 4px; font-size: 0.75rem; font-weight: 600; color: var(--muted); }
+  .tile.clear .chip { color: var(--accent); }
   section { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 16px; }
-  section h3 { margin: 0 0 4px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  section h3 { margin: 0 0 4px; font-size: 1.05rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
   .headline { font-size: 1.2rem; font-weight: 600; margin: 4px 0; }
   .detail { color: var(--muted); margin: 4px 0 0; font-size: 0.95rem; }
   .ranges { margin: 14px 0 4px; display: grid; gap: 10px; }
@@ -71,11 +120,18 @@
   .moves { list-style: none; margin: 12px 0 4px; padding: 0; display: grid; gap: 10px; }
   .move { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 4px 10px; align-items: baseline;
           padding: 12px 14px; border-radius: 10px; background: var(--bg); }
-  .move .rank { font-weight: 700; color: var(--accent); font-size: 1.1rem; }
+  .move .rank { font-weight: 800; color: var(--accent); font-size: 1.5rem; line-height: 1; }
   .move .name { font-weight: 600; }
-  .move .chance { font-weight: 700; font-size: 1.15rem; font-variant-numeric: tabular-nums; text-align: right; }
+  .move .chance { font-weight: 800; font-size: 1.6rem; line-height: 1; font-variant-numeric: tabular-nums; text-align: right; }
   .move .compare { grid-column: 2 / 4; color: var(--muted); font-size: 0.88rem; }
   .move .flag { grid-column: 2 / 4; justify-self: start; }
+  .move .compare-bars { grid-column: 2 / 4; display: grid; gap: 4px; margin: 4px 0 2px; }
+  .compare-bar { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: center; gap: 8px;
+                 font-size: 0.78rem; color: var(--muted); }
+  .compare-bar .bar span { width: 0; transition: width 0.6s ease-out; }
+  .explain { margin-top: 10px; padding: 8px 12px; background: var(--bg); border: none; }
+  .explain summary { font-size: 0.88rem; color: var(--accent); }
+  .explain p { margin: 6px 0 0; font-size: 0.88rem; }
   .flag { display: inline-block; padding: 1px 8px; border-radius: 999px;
           background: var(--accent-soft); color: var(--accent); font-size: 0.78rem; font-weight: 600; }
   .note { margin: 2px 0 0; color: var(--muted); font-size: 0.85rem; }
@@ -90,10 +146,22 @@
   th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
   td.number, th.number { text-align: right; }
   details { margin-top: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
-  summary { cursor: pointer; font-weight: 600; }
+  summary { cursor: pointer; font-weight: 700; font-size: 1.1rem; letter-spacing: 0.02em; }
   details p, details li { color: var(--muted); }
   footer { margin-top: 24px; color: var(--muted); font-size: 0.9rem; }
   a { color: var(--accent); }
+  @media (max-width: 480px) {
+    .tiles { grid-template-columns: minmax(0, 1fr); }
+    .tile { display: grid; grid-template-columns: 86px minmax(0, 1fr); column-gap: 10px; align-items: center; }
+    .tile .label { grid-column: 1 / 3; }
+    .tile .value { grid-row: 2 / 4; font-size: 2rem; }
+    .tile .meaning, .tile .chip { grid-column: 2; margin: 0; }
+    .compare-bar { grid-template-columns: 76px minmax(0, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card.entering { animation: none; }
+    .compare-bar .bar span { transition: none; }
+  }
 </style>
 </head>
 <body>
@@ -104,9 +172,10 @@
     <p id="data-line"></p>
   </header>
 
-  <div class="picker">
+  <div class="picker" id="picker">
     <h2>Pick a team to see its head coach</h2>
     <div class="coach-grid" id="current-coaches"></div>
+    <button type="button" class="show-all" id="show-all">Show all teams and former coaches</button>
     <details class="former-group" id="former-group">
       <summary id="former-summary">Former coaches</summary>
       <div class="coach-grid former" id="former-coaches"></div>
@@ -147,6 +216,18 @@ const TEAM_NAMES = {
   POR: "Portland Trail Blazers", SAC: "Sacramento Kings", SAS: "San Antonio Spurs", TOR: "Toronto Raptors",
   UTA: "Utah Jazz", WAS: "Washington Wizards",
 };
+
+// Each team's main color, dark enough for white text on top.
+const TEAM_COLORS = {
+  ATL: "#C8102E", BKN: "#1F1F1F", BOS: "#007A33", CHA: "#1D1160", CHI: "#CE1141", CLE: "#860038",
+  DAL: "#00538C", DEN: "#0E2240", DET: "#C8102E", GSW: "#1D428A", HOU: "#CE1141", IND: "#002D62",
+  LAC: "#1D428A", LAL: "#552583", MEM: "#12173F", MIA: "#98002E", MIL: "#00471B", MIN: "#0C2340",
+  NOP: "#0C2340", NYK: "#006BB6", OKC: "#0065A3", ORL: "#0065A3", PHI: "#006BB6", PHX: "#1D1160",
+  POR: "#B5121B", SAC: "#5A2D81", SAS: "#1F1F1F", TOR: "#CE1141", UTA: "#002B5C", WAS: "#002B5C",
+};
+
+// Runs a style change on the next frame so CSS transitions animate it; immediately where frames do not exist.
+const nextFrame = globalThis.requestAnimationFrame || (callback => callback());
 
 const AXIS_MIN = 0.5, AXIS_MAX = 2.0;  // ratio axis, log scale: half as often to twice as often
 
@@ -206,8 +287,8 @@ function rankPhrase(rank, total) {
   return rank <= total / 2 ? `${ordinal(rank)} most of ${total} coaches` : `${ordinal(total - rank + 1)} fewest of ${total} coaches`;
 }
 
-function decisionSection(title, noun, stats, everyone, note) {
-  const section = element("section");
+function decisionSection(title, noun, stats, everyone, note, id) {
+  const section = element("section", {id});
   section.append(element("h3", {}, title));
   section.append(element("p", {class: "headline"},
     `Makes ${moreOrFewer(stats.ratio, noun)} an average coach in the same situations.`));
@@ -248,9 +329,10 @@ function movesSection(coach) {
     return section;
   }
   section.append(element("p", {class: "detail"},
-    `At the next stoppage of a close game (within ${close.max_margin} points, last ` +
-    `${close.max_seconds_left / 60} minutes of the 4th), from his ${moves.stoppages.toLocaleString()} ` +
-    `such stoppages in ${moves.season}. Chance he makes each move, with a 95% range.`));
+    `The next time play stops in a close game (within ${close.max_margin} points, last ` +
+    `${close.max_seconds_left / 60} minutes of the 4th quarter): the chance he makes each move, from his ` +
+    `${moves.stoppages.toLocaleString()} such moments in ${moves.season}.`));
+  const scaleMax = Math.max(...moves.moves.flatMap(move => [move.high, move.league])) * 1.05;
   const list = element("ol", {class: "moves"});
   moves.moves.forEach((move, index) => {
     const item = element("li", {class: "move"});
@@ -258,6 +340,19 @@ function movesSection(coach) {
     const name = element("span", {class: "name"}, move.label);
     item.append(name, element("span", {class: "chance"}, percent(move.probability)));
     if (move.differs) item.append(element("span", {class: "flag"}, leagueTag(move)));
+    const bars = element("div", {class: "compare-bars", role: "img",
+      "aria-label": `${percent(move.probability)} for him, ${percent(move.league)} for an average coach`});
+    [["This coach", move.probability, "var(--team-bar)"], ["Average coach", move.league, "var(--league)"]]
+      .forEach(([who, share, color]) => {
+        const row = element("div", {class: "compare-bar"});
+        const bar = element("div", {class: "bar"});
+        const fill = element("span", {style: `background:${color}`});
+        nextFrame(() => fill.setAttribute("style", `background:${color};width:${share / scaleMax * 100}%`));
+        bar.append(fill);
+        row.append(element("span", {}, who), bar);
+        bars.append(row);
+      });
+    item.append(bars);
     item.append(element("span", {class: "compare"},
       `Range ${percent(move.low)} to ${percent(move.high)} · average coach ${percent(move.league)}` +
       (move.kind === "substitution" ? " · when he is on the floor" : "")));
@@ -267,6 +362,12 @@ function movesSection(coach) {
   section.append(element("p", {class: "note"},
     "Flagged moves are where this coach's usual habit clearly differs from an average coach. " +
     "Unflagged ones are mostly the game situation, which any coach would respond to the same way."));
+  const explain = element("details", {class: "explain"});
+  explain.append(element("summary", {}, "What do the ranges mean?"),
+    element("p", {}, "Each range is where his real chance most likely sits (95% confidence): a narrow range means " +
+      "the data pins him down, a wide one means fewer examples. \"When he is on the floor\" means the chance a " +
+      "player comes out at a moment he is playing."));
+  section.append(explain);
   return section;
 }
 
@@ -285,7 +386,7 @@ function shareBar(label, coachShare, leagueShare) {
 }
 
 function foulSection(coach) {
-  const section = element("section");
+  const section = element("section", {id: "foul-detail"});
   section.append(element("h3", {}, "Foul trouble"));
   const foul = coach.foul_trouble;
   if (!foul) {
@@ -337,6 +438,39 @@ function teamsSection(coach) {
   return section;
 }
 
+function tile(label, value, meaning, chip, isClear, target) {
+  const box = element("button", {type: "button", class: isClear ? "tile clear" : "tile"});
+  box.append(element("span", {class: "label"}, label), element("span", {class: "value"}, value),
+             element("span", {class: "meaning"}, meaning), element("span", {class: "chip"}, chip));
+  box.addEventListener("click", () => {
+    const section = document.getElementById(target);
+    if (section && section.scrollIntoView) section.scrollIntoView({behavior: "smooth", block: "start"});
+  });
+  return box;
+}
+
+function decisionTile(label, noun, stats) {
+  const clearlyMore = stats.tendency_low > 1, clearlyFewer = stats.tendency_high < 1;
+  const change = Math.round(Math.abs(stats.ratio - 1) * 100);
+  return [label, `${stats.ratio >= 1 ? "+" : "−"}${change}%`,
+          `${stats.ratio >= 1 ? "more" : "fewer"} ${noun} than an average coach`,
+          clearlyMore || clearlyFewer ? "A real habit" : "Within normal range", clearlyMore || clearlyFewer];
+}
+
+function statTiles(coach) {
+  const tiles = element("div", {class: "tiles"});
+  const foul = coach.foul_trouble;
+  const foulClear = foul && (foul.high < 0 || foul.low > 0);
+  tiles.append(
+    tile(...decisionTile("Timeouts", "timeouts", coach.timeouts), "timeouts-detail"),
+    tile(...decisionTile("Subs", "subs", coach.substitutions), "substitutions-detail"),
+    foul ? tile("Foul trouble", `${foul.season_wins >= 0 ? "+" : "−"}${Math.abs(foul.season_wins).toFixed(2)}`,
+                "wins a season from benching players in foul trouble",
+                foulClear ? "A real effect" : "Within normal range", foulClear, "foul-detail")
+         : tile("Foul trouble", "–", "not enough close games to measure", "Not audited", false, "foul-detail"));
+  return tiles;
+}
+
 const coachBoxes = new Map();  // coach name -> his box
 let currentTeamOf = {};  // current coach's name -> his team
 
@@ -344,13 +478,20 @@ function coachBox(coach, team, detail) {
   const box = element("button", {type: "button", class: "coach-box", "data-coach": coach.name, "aria-pressed": "false"});
   box.append(element("span", {class: "team"}, TEAM_NAMES[team] || team),
              element("span", {class: "who"}, `${coach.name} · ${detail}`));
-  box.addEventListener("click", () => {
-    showCoach(coach.name);
-    const card = document.getElementById("card");
-    if (card.scrollIntoView) card.scrollIntoView({behavior: "smooth", block: "start"});
-  });
+  box.addEventListener("click", () => openCoach(coach.name));
   coachBoxes.set(coach.name, box);
   return box;
+}
+
+// A tap on a team box and a shared link (#Billy%20Donovan) land the same way: the grid shrinks
+// to the pinned strip, his box is centered in it, and the page scrolls to his card.
+function openCoach(name) {
+  showCoach(name);
+  document.getElementById("picker").setAttribute("class", "picker compact");
+  const box = coachBoxes.get(name);
+  if (box && box.scrollIntoView) box.scrollIntoView({block: "nearest", inline: "center"});
+  const card = document.getElementById("card");
+  if (card.scrollIntoView) card.scrollIntoView({behavior: "smooth", block: "start"});
 }
 
 function showCoach(name) {
@@ -363,17 +504,23 @@ function showCoach(name) {
     card.append(element("p", {class: "detail"}, "Coach not found. Pick another from the list."));
     return;
   }
-  card.append(element("h2", {}, coach.name));
-  card.append(element("p", {class: "teams-line"},
-    coach.teams.map(team => `${team.team} ${team.seasons}`).join(" · ") + ` · ${coach.games} games`));
+  const team = currentTeamOf[coach.name] || coach.teams[coach.teams.length - 1].team;
+  card.setAttribute("style", `--team:${TEAM_COLORS[team] || "var(--accent)"}`);
+  card.setAttribute("class", "card");
+  nextFrame(() => card.setAttribute("class", "card entering"));
+  const head = element("div", {class: "coach-head"});
+  head.append(element("h2", {}, coach.name), element("p", {class: "teams-line"},
+    coach.teams.map(stint => `${TEAM_NAMES[stint.team] || stint.team} ${stint.seasons}`).join(" · ") +
+    ` · ${coach.games} games`));
+  card.append(head, statTiles(coach));
   const timeouts = DATA.coaches.map(other => other.timeouts.ratio);
   const substitutions = DATA.coaches.map(other => other.substitutions.ratio);
   card.append(movesSection(coach));
   card.append(
     decisionSection("Timeouts", "timeout calls", coach.timeouts, timeouts,
-      "Excludes TV timeouts the scorer forces."),
+      "Excludes TV timeouts the scorer forces.", "timeouts-detail"),
     decisionSection("Substitutions", "substitutions", coach.substitutions, substitutions,
-      "Accounts for which players he has."),
+      "Accounts for which players he has.", "substitutions-detail"),
     foulSection(coach));
   if (coach.teams.length > 1) card.append(teamsSection(coach));
   history.replaceState(null, "", `#${encodeURIComponent(coach.name)}`);
@@ -402,9 +549,15 @@ function start() {
       const last = coach.teams[coach.teams.length - 1];
       document.getElementById("former-coaches").append(coachBox(coach, last.team, `last coached ${last.seasons.split(" to ").pop()}`));
     });
+  document.getElementById("show-all").addEventListener("click", () => {
+    const picker = document.getElementById("picker");
+    picker.setAttribute("class", "picker");
+    if (picker.scrollIntoView) picker.scrollIntoView({behavior: "smooth", block: "start"});
+  });
   const fromLink = decodeURIComponent(location.hash.slice(1));
   const mostGames = [...DATA.coaches].sort((a, b) => b.games - a.games)[0].name;
-  showCoach(DATA.coaches.some(coach => coach.name === fromLink) ? fromLink : mostGames);
+  if (DATA.coaches.some(coach => coach.name === fromLink)) openCoach(fromLink);
+  else showCoach(mostGames);
 }
 
 start();
