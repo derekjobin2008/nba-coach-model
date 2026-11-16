@@ -60,16 +60,22 @@
     position: sticky; top: 0; z-index: 5; margin: 0 -16px 12px; padding: 8px 16px;
     background: var(--bg); border-bottom: 1px solid var(--line);
   }
-  .picker.compact h2, .picker.compact .former-group { display: none; }
+  .picker.compact h2, .picker.compact .former-group summary { display: none; }
+  /* In the strip a former coach is shown only while he is the one picked: just his box, with his name. */
+  .picker.compact { display: flex; flex-direction: column; }
+  .picker.compact .former-group:not(:has([aria-pressed="true"])) { display: none; }
+  .picker.compact .former-group .coach-box:not([aria-pressed="true"]) { display: none; }
+  .picker.compact .former-group { margin: 6px 0 0; padding: 0; border: none; background: none; }
+  .picker.compact .former-group .coach-grid { display: flex; }
   .picker.compact .coach-grid {
     grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: max-content;
     overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin;
   }
   .picker.compact .coach-box { min-height: 0; padding: 6px 10px; }
   .picker.compact .coach-box[aria-pressed="true"] { padding: 5px 9px; }
-  .picker.compact .coach-box .who { display: none; }
+  .picker.compact #current-coaches .coach-box .who { display: none; }
   .picker.compact .show-all {
-    display: inline-block; margin-top: 6px; padding: 4px 0; font: inherit; font-size: 0.9rem; font-weight: 600;
+    order: 2; align-self: flex-start; display: inline-block; margin-top: 6px; padding: 4px 0; font: inherit; font-size: 0.9rem; font-weight: 600;
     color: var(--accent); background: none; border: none; cursor: pointer;
   }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; overflow: hidden; }
