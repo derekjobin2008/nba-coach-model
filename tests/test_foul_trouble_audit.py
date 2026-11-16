@@ -45,3 +45,13 @@ def test_benching_less_for_foul_trouble_costs_less():
     keeping_cost, _ = foul_handling_cost(league, keeps_them_in, *args)
     assert benching_cost < keeping_cost <= 1e-9
     assert len(cells_by_quarter(rows)) == 24
+
+
+def test_too_few_close_games_means_no_audited_coaches_not_a_crash(database):
+    # The three fixture games give nobody the 100 close games the audit needs. The page then
+    # says "Not audited"; before, the player-value fit crashed first (5 folds, 1 game).
+    from coachmodel.foul_trouble_audit import AUDIT_COLUMNS, audit_coaches
+
+    audit = audit_coaches(database, np.random.default_rng(0))
+    assert audit.empty
+    assert list(audit.columns) == AUDIT_COLUMNS[1:]

@@ -190,7 +190,8 @@ def choose_taus(offset, labels, rows: pd.DataFrame, columns, tau_grid, rng) -> d
 def load_task_rows(connection: duckdb.DuckDBPyConnection, task) -> pd.DataFrame:
     """The task's feature rows that have a head coach, with a coach-team stint label."""
     frame = load_features(connection, task)
-    teams = dict(connection.sql("SELECT DISTINCT home_team_id, home_team FROM games").fetchall())
+    teams = dict(connection.sql("SELECT home_team_id, home_team FROM games "
+                                "UNION SELECT away_team_id, away_team FROM games").fetchall())
     frame = frame[frame["coach_name"].notna()].reset_index(drop=True)
     frame["stint"] = frame["coach_name"] + " (" + frame["team_id"].map(teams) + ")"
     frame["coach_season"] = frame["coach_name"] + " " + frame["season"]

@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from coachmodel.coach_effects import GroupEffects, fit_group_effects, per_coach_count_error
+from coachmodel.baseline import TASKS
+from coachmodel.coach_effects import GroupEffects, fit_group_effects, load_task_rows, per_coach_count_error
 
 
 def simulate(coach_effects, stint_effects, stint_coach, rows_per_stint, rng):
@@ -113,3 +114,11 @@ def test_rate_ratio_ranges_reflect_effect_and_sample_size():
     assert a["low"] < a["ratio"] < a["high"] and a["low"] > 1.3  # clearly above average
     assert b["low"] < 1 < b["high"]  # not distinguishable from average
     assert (b["high"] - b["low"]) > (a["high"] - a["low"])  # less data, wider range
+
+
+def test_every_stoppage_gets_its_coach_and_team_even_for_a_team_seen_only_on_the_road(database):
+    # In the fixture games Minnesota only plays away. Team names used to come from home teams
+    # only, so Chris Finch's rows had no stint and fitting the page's models crashed.
+    rows = load_task_rows(database, TASKS["timeout"])
+    assert rows["stint"].notna().all()
+    assert "Chris Finch (MIN)" in set(rows["stint"])

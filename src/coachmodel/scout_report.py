@@ -42,9 +42,10 @@ CLOSE_GAME_MAX_SECONDS_LEFT = 360
 MIN_PLAYER_STOPPAGES = 30  # a player needs this many close-game stoppages on the floor to be ranked
 TOP_MOVES = 3
 
+PLAYERS_PATH = REPO_ROOT / "data" / "raw" / "players.json"
 PLAYER_NAMES_SQL = """
     SELECT PERSON_ID AS person_id, DISPLAY_FIRST_LAST AS player_name
-    FROM read_json('data/raw/players.json')
+    FROM read_json(?)
 """
 
 COACH_GAMES_SQL = """
@@ -136,7 +137,9 @@ def likely_moves(timeout_moves: pd.DataFrame, substitution_moves: pd.DataFrame, 
     return result
 
 
-def compute(connection: duckdb.DuckDBPyConnection) -> dict:
+def compute(connection: duckdb.DuckDBPyConnection, min_games: int = MIN_GAMES, players_path: Path = PLAYERS_PATH) -> dict:
+    """Everything the page shows, for coaches with at least min_games regular-season games
+    (player names for the likely-moves card from players_path)."""
     rng = np.random.default_rng(124)
     print("fitting the timeout model on every game...", flush=True)
     timeouts, timeout_stints, timeout_season_sd = task_summary(connection, "timeout")
@@ -147,7 +150,7 @@ def compute(connection: duckdb.DuckDBPyConnection) -> dict:
                        for kind, table in (("timeout", timeouts), ("substitution", substitutions))}
     moves = likely_moves(move_probabilities(connection, "timeout", timeout_season_sd),
                          move_probabilities(connection, "substitution", substitution_season_sd),
-                         dict(connection.sql(PLAYER_NAMES_SQL).fetchall()), clearly_differs)
+                         dict(connection.execute(PLAYER_NAMES_SQL, [str(players_path)]).fetchall()), clearly_differs)
     print("running the foul-trouble audit...", flush=True)
     audit = audit_coaches(connection, rng)
     audit["cost rank"] = audit["cost per starter-game"].rank().astype(int)  # 1 = costs the most
@@ -158,7 +161,7 @@ def compute(connection: duckdb.DuckDBPyConnection) -> dict:
 
     coaches = []
     for coach_name, stints in games.groupby("coach_name"):
-        if stints["games"].sum() < MIN_GAMES or coach_name not in timeouts.index:
+        if stints["games"].sum() < min_games or coach_name not in timeouts.index:
             continue
         teams = []
         for _, stint in stints.sort_values("first_season").iterrows():

@@ -33,6 +33,9 @@ from coachmodel.foul_trouble import (
 
 PRIOR_SECONDS = 600  # each coach cell starts with 10 minutes of league-average behavior
 MIN_CLOSE_GAMES = 100
+AUDIT_COLUMNS = ["coach", "close games", "starter cap", "value over bench", "Q1 2 fouls", "Q3 4 fouls",
+                 "Q4 5 fouls", "cost per starter-game", "low", "high", "season wins", "optimal gain",
+                 "cost if worth 6"]
 BOOTSTRAP_SAMPLES = 200
 FIXED_VALUE_PER_48 = 6.0  # the earlier assumption, kept for comparison
 STARTERS = 5
@@ -96,6 +99,9 @@ def audit_coaches(connection: duckdb.DuckDBPyConnection, rng, bootstrap_samples:
 
     rows = connection.sql((MODELS_SQL_DIR / "foul_trouble_coach_policy.sql").read_text()).df()
     coaches = connection.sql("SELECT game_id, team_id, coach_name FROM game_coaches").df()
+    rows = rows.merge(coaches, on=["game_id", "team_id"])
+    if not (rows.groupby("coach_name")["game_id"].nunique() >= MIN_CLOSE_GAMES).any():
+        return pd.DataFrame(columns=AUDIT_COLUMNS).set_index("coach")  # nobody to audit: skip the slow fits
     players = connection.sql((MODELS_SQL_DIR / "foul_trouble_players.sql").read_text()).df()
     multipliers = tuple(fourth_quarter_foul_multipliers(connection.sql(EFFECTS_SQL.read_text()).df()))
     win_rows = load_rows(connection)
@@ -107,7 +113,6 @@ def audit_coaches(connection: duckdb.DuckDBPyConnection, rng, bootstrap_samples:
     league_rate = regulars["fouls"].sum() / regulars["minutes"].sum()
     foul_rate = float(((regulars["fouls"] + 30 * league_rate) / (regulars["minutes"] + 30)).median())
 
-    rows = rows.merge(coaches, on=["game_id", "team_id"])
     league = LeaguePolicy(rows)
     results = []
     for coach_name, coach_rows in rows.groupby("coach_name"):
@@ -138,14 +143,15 @@ def audit_coaches(connection: duckdb.DuckDBPyConnection, rng, bootstrap_samples:
             "season wins": cost * STARTERS * SEASON_GAMES, "optimal gain": optimal_gap,
             "cost if worth 6": fixed_cost,
         })
-    return pd.DataFrame(results).sort_values("cost per starter-game").set_index("coach")
+    return pd.DataFrame(results, columns=AUDIT_COLUMNS).sort_values("cost per starter-game").set_index("coach")
 
 
 def league_foul_trouble_shares(connection: duckdb.DuckDBPyConnection) -> dict[str, float]:
-    """League-wide starter on-court shares in the three foul-trouble cells the page shows."""
+    """League-wide starter on-court shares in the three foul-trouble cells the page shows
+    (missing, as with a coach, when no starter was ever in that cell)."""
     rows = connection.sql((MODELS_SQL_DIR / "foul_trouble_coach_policy.sql").read_text()).df()
     cells = cells_by_quarter(rows)
-    return {name: float(cells.loc[cell, "seconds_on"] / cells.loc[cell, "seconds"])
+    return {name: float(cells.loc[cell, "seconds_on"] / cells.loc[cell, "seconds"]) if cell in cells.index else np.nan
             for name, cell in {"Q1 2 fouls": (1, 2), "Q3 4 fouls": (3, 4), "Q4 5 fouls": (4, 5)}.items()}
 
 
