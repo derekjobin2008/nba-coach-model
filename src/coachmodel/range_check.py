@@ -15,11 +15,16 @@ estimated by the method of moments: the variance of (b_test - b_train) beyond wh
 standard errors explain. For the check, each season's drift is estimated from the other
 seasons only (cross-fitting), so no season sets its own range width.
 
+The page's ranges use the last row (clustered + drift); its result is appended, with the
+date and commit, to reports/range_check.csv, and tests/test_benchmark.py fails if the latest
+run's coverage falls outside 90% to 99% (about 95%, allowing for chance with ~150 coach-seasons).
+
 Usage:
     python -m coachmodel.range_check --task timeout
 """
 
 import argparse
+import datetime
 from pathlib import Path
 
 import duckdb
@@ -28,13 +33,15 @@ import pandas as pd
 from scipy.special import expit
 
 from coachmodel.baseline import TASKS, build_model
-from coachmodel.build_db import DATABASE_PATH
+from coachmodel.benchmark import commit_id
+from coachmodel.build_db import DATABASE_PATH, REPO_ROOT
 from coachmodel.coach_effects import (
     CHOSEN_TAUS, LEVEL_COLUMNS, GroupEffects, coach_standard_errors, load_task_rows, pooled_log_odds,
 )
 
 TEST_SEASONS = ["2022-23", "2023-24", "2024-25", "2025-26"]
 METHODS = ["conditional", "joint", "clustered"]
+RESULTS_PATH = REPO_ROOT / "reports" / "range_check.csv"
 MIN_TEST_DECISIONS = 30  # a coach needs this many decisions in the test season to be checked
 
 
@@ -132,6 +139,12 @@ def main() -> None:
           f"joint {typical['se_train_joint']:.3f}, clustered {typical['se_train_clustered']:.3f}")
     print(f"season-to-season drift in a coach's effect: sd {np.sqrt(drift):.3f} log-odds "
           f"(about {np.expm1(np.sqrt(drift)):.0%} in his rate)")
+    page_ranges = table.loc["clustered + drift (cross-fitted)"]
+    pd.DataFrame([{"date": datetime.date.today().isoformat(), "commit": commit_id(), "task": args.task,
+                   "coach_seasons": len(pairs), "inside_95_range": page_ranges["inside 95% range"],
+                   "sd_of_z": page_ranges["sd of z"], "drift_sd": float(np.sqrt(drift))}]).to_csv(
+        RESULTS_PATH, mode="a", header=not RESULTS_PATH.exists(), index=False, float_format="%.4g")
+    print(f"appended to {RESULTS_PATH.relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":

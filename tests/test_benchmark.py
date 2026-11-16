@@ -65,3 +65,16 @@ def test_the_latest_coach_model_beats_the_league_model():
         coach_model = latest.set_index("model").loc["coach model"]
         assert coach_model["compared_with"] == "league model"
         assert coach_model["verdict"] == "better", f"{task}: coach model gain {coach_model['gain']:+.3%}"
+
+
+RANGE_RESULTS = RESULTS_PATH.with_name("range_check.csv")
+
+
+@pytest.mark.skipif(not RANGE_RESULTS.exists(), reason="no range check recorded yet")
+def test_the_pages_95_percent_ranges_contain_about_95_percent_of_next_seasons():
+    # 90% to 99%: with about 100 to 150 coach-seasons, an honest 95% range lands within
+    # about 4 points of 95% by chance alone (two binomial standard deviations).
+    results = pd.read_csv(RANGE_RESULTS)
+    for task, runs in results.groupby("task"):
+        latest = runs.iloc[-1]
+        assert 0.90 <= latest["inside_95_range"] <= 0.99, f"{task}: {latest['inside_95_range']:.0%} inside"
