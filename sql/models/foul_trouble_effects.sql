@@ -67,7 +67,12 @@ fouls_committed AS (
     SELECT f.person_id, least(f.player_fouls - 1, 5) AS fouls_now,
            CASE WHEN p.game_seconds_elapsed < 720 THEN 1 WHEN p.game_seconds_elapsed < 1440 THEN 2
                 WHEN p.game_seconds_elapsed < 2160 THEN 3 ELSE 4 END AS quarter,
-           count(*) AS fouls
+           count(*) AS fouls,
+           -- By kind, for the targeting test: opponents who attack him draw shooting
+           -- fouls; reach-ins and loose-ball fouls are his own choice.
+           count(*) FILTER (WHERE p.sub_type = 'Shooting') AS shooting_fouls,
+           count(*) FILTER (WHERE p.sub_type IN ('Personal', 'Loose Ball')) AS other_defensive_fouls,
+           count(*) FILTER (WHERE p.sub_type IN ('Offensive', 'Offensive Charge')) AS offensive_fouls
     FROM personal_fouls AS f JOIN pbp AS p USING (game_id, action_id)
     JOIN games AS g ON g.game_id = f.game_id
     WHERE g.season_type = 'Regular Season' AND p.period <= 4
@@ -79,7 +84,10 @@ SELECT
     sum(p.piece_to - p.piece_from) / 60 AS minutes,
     sum(p.team_points) AS team_points,
     sum(p.opponent_points) AS opponent_points,
-    coalesce(any_value(f.fouls), 0) AS fouls
+    coalesce(any_value(f.fouls), 0) AS fouls,
+    coalesce(any_value(f.shooting_fouls), 0) AS shooting_fouls,
+    coalesce(any_value(f.other_defensive_fouls), 0) AS other_defensive_fouls,
+    coalesce(any_value(f.offensive_fouls), 0) AS offensive_fouls
 FROM pieces_with_scores AS p
 JOIN games AS g USING (game_id)
 LEFT JOIN fouls_committed AS f USING (person_id, fouls_now, quarter)

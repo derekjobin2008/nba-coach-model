@@ -13,6 +13,13 @@ Three readings:
     fouls ratio > 1      opponents target him to draw the next foul (Derek's observation)
     points allowed > 1   his team defends worse with him in foul trouble (value drops)
 
+Fouls alone mix caution and targeting, so they are also split by kind. Caution should cut
+fouls he chooses (reach-ins, loose balls) at least as much as shooting fouls; opponents
+attacking him draw shooting fouls. So
+    targeting ratio = shooting-foul ratio / other-defensive-foul ratio
+above 1 (with a range excluding 1) says his shooting fouls fall less than his own-choice
+fouls: evidence that opponents go at him. Offensive fouls are shown for comparison.
+
 Usage:
     python -m coachmodel.foul_trouble_effects
 """
@@ -29,7 +36,9 @@ from coachmodel.build_db import DATABASE_PATH, REPO_ROOT
 EFFECTS_SQL = REPO_ROOT / "sql" / "models" / "foul_trouble_effects.sql"
 BASELINE_FOULS = 1  # 0 or 1 fouls: not in foul trouble in any quarter
 BOOTSTRAP_SAMPLES = 2000
-MEASURES = {"fouls": "fouls", "points allowed": "opponent_points", "points scored": "team_points"}
+MEASURES = {"fouls": "fouls", "points allowed": "opponent_points", "points scored": "team_points",
+            "shooting fouls": "shooting_fouls", "other defensive fouls": "other_defensive_fouls",
+            "offensive fouls": "offensive_fouls"}
 
 
 def in_trouble(quarter: int, fouls_now: int) -> bool:
@@ -55,16 +64,20 @@ def ratios(compared: pd.DataFrame) -> pd.Series:
     return pd.Series({name: totals[column] / totals[f"{column}_expected"] for name, column in MEASURES.items()})
 
 
-def bootstrap_ratios(compared: pd.DataFrame, rng) -> pd.DataFrame:
-    """Ratios recomputed on players resampled with replacement: a 95% range."""
+def bootstrap_draws(compared: pd.DataFrame, rng) -> pd.DataFrame:
+    """Every measure's ratio recomputed on players resampled with replacement, once per draw."""
     per_player = compared.groupby("person_id")[
         [*MEASURES.values(), *[f"{c}_expected" for c in MEASURES.values()]]].sum()
     samples = rng.integers(0, len(per_player), (BOOTSTRAP_SAMPLES, len(per_player)))
     values = per_player.to_numpy()
     sums = values[samples].sum(axis=1)
     count = len(MEASURES)
-    draws = sums[:, :count] / sums[:, count:]
-    return pd.DataFrame(np.percentile(draws, [2.5, 97.5], axis=0), index=["low", "high"], columns=list(MEASURES))
+    return pd.DataFrame(sums[:, :count] / sums[:, count:], columns=list(MEASURES))
+
+
+def targeting_ratio(ratio_by_measure) -> float:
+    """Shooting-foul ratio over other-defensive-foul ratio (see the module docstring)."""
+    return ratio_by_measure["shooting fouls"] / ratio_by_measure["other defensive fouls"]
 
 
 def fourth_quarter_foul_multipliers(rows: pd.DataFrame) -> list[float]:
@@ -102,15 +115,22 @@ def main() -> None:
 
     trouble = compared[compared["in_trouble"]]
     overall = ratios(trouble)
-    ranges = bootstrap_ratios(trouble, rng)
+    draws = bootstrap_draws(trouble, rng)
+    ranges = draws.quantile([0.025, 0.975]).set_axis(["low", "high"])
     print(f"\nall foul-trouble minutes ({trouble['minutes'].sum():,.0f} minutes, "
           f"{trouble['person_id'].nunique()} players), with 95% ranges over players:")
     for name in MEASURES:
-        print(f"  {name:15s} {overall[name]:.3f}   ({ranges.loc['low', name]:.3f} to {ranges.loc['high', name]:.3f})")
+        print(f"  {name:22s} {overall[name]:.3f}   ({ranges.loc['low', name]:.3f} to {ranges.loc['high', name]:.3f})")
     expected_minutes = trouble["minutes"].sum()
     net_change = ((trouble["team_points"].sum() - trouble["team_points_expected"].sum())
                   - (trouble["opponent_points"].sum() - trouble["opponent_points_expected"].sum()))
     print(f"  net points per 48 minutes vs. his baseline: {net_change / expected_minutes * 48:+.2f}")
+    low, high = np.percentile(targeting_ratio(draws), [2.5, 97.5])
+    print(f"\ntargeting ratio (shooting fouls / other defensive fouls): {targeting_ratio(overall):.3f} "
+          f"({low:.3f} to {high:.3f})")
+    print("  above 1: shooting fouls fall less than his own-choice fouls, so opponents go at him"
+          if low > 1 else "  below 1: he cuts shooting fouls even more than his own-choice fouls"
+          if high < 1 else "  no measurable difference between the kinds")
 
 
 if __name__ == "__main__":

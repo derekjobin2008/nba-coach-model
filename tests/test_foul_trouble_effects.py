@@ -2,15 +2,23 @@ import pandas as pd
 import pytest
 
 from coachmodel.foul_trouble import Player, simulate, solve
-from coachmodel.foul_trouble_effects import compare_with_baseline, in_trouble, ratios
+from coachmodel.foul_trouble_effects import compare_with_baseline, in_trouble, ratios, targeting_ratio
 
 
-def rows(person_id, quarter, minutes_by_fouls, foul_rate, trouble_multiplier=1.0, points_rate=2.4):
-    """Rows for one player: exact (not random) fouls and points from the given rates."""
-    return [{"person_id": person_id, "quarter": quarter, "fouls_now": f, "minutes": minutes,
-             "fouls": minutes * foul_rate * (trouble_multiplier if f >= 2 else 1.0),
-             "team_points": minutes * points_rate, "opponent_points": minutes * points_rate}
-            for f, minutes in minutes_by_fouls.items()]
+def rows(person_id, quarter, minutes_by_fouls, foul_rate, trouble_multiplier=1.0, points_rate=2.4,
+         drawn_in_trouble=1.0):
+    """Rows for one player: exact (not random) fouls and points from the given rates. Half
+    his fouls are shooting fouls, scaled by drawn_in_trouble at 2+ fouls (opponents going
+    at him); the rest are split between other defensive and offensive fouls."""
+    result = []
+    for f, minutes in minutes_by_fouls.items():
+        fouls = minutes * foul_rate * (trouble_multiplier if f >= 2 else 1.0)
+        shooting = fouls / 2 * (drawn_in_trouble if f >= 2 else 1.0)
+        result.append({"person_id": person_id, "quarter": quarter, "fouls_now": f, "minutes": minutes,
+                       "fouls": fouls / 2 + shooting, "shooting_fouls": shooting,
+                       "other_defensive_fouls": fouls / 4, "offensive_fouls": fouls / 4,
+                       "team_points": minutes * points_rate, "opponent_points": minutes * points_rate})
+    return result
 
 
 def test_within_player_comparison_removes_selection():
@@ -30,6 +38,23 @@ def test_detects_caution():
     data = pd.DataFrame(rows(1, 4, {0: 200, 1: 100, 5: 50}, foul_rate=0.08, trouble_multiplier=0.5))
     compared = compare_with_baseline(data)
     assert ratios(compared[compared.fouls_now == 5])["fouls"] == pytest.approx(0.5)
+
+
+def test_targeting_ratio_separates_opponents_going_at_him_from_caution():
+    cautious = compare_with_baseline(pd.DataFrame(
+        rows(1, 4, {0: 200, 1: 100, 5: 50}, foul_rate=0.08, trouble_multiplier=0.5)))
+    targeted = compare_with_baseline(pd.DataFrame(
+        rows(1, 4, {0: 200, 1: 100, 5: 50}, foul_rate=0.08, trouble_multiplier=0.5, drawn_in_trouble=1.4)))
+    assert targeting_ratio(ratios(cautious[cautious.fouls_now == 5])) == pytest.approx(1.0)
+    assert targeting_ratio(ratios(targeted[targeted.fouls_now == 5])) == pytest.approx(1.4)
+
+
+def test_fouls_by_kind_never_exceed_all_fouls(database):
+    from coachmodel.foul_trouble_effects import EFFECTS_SQL
+    effects = database.sql(EFFECTS_SQL.read_text()).df()
+    kinds = effects[["shooting_fouls", "other_defensive_fouls", "offensive_fouls"]].sum(axis=1)
+    assert effects["fouls"].sum() > 0
+    assert (kinds <= effects["fouls"]).all()
 
 
 def test_in_trouble_follows_the_coaches_rule():
