@@ -43,9 +43,9 @@ def more_or_fewer(ratio: float, noun: str) -> str:
 
 def test_the_pipeline_puts_the_fixture_coaches_on_the_page(built_page):
     _, data = built_page
-    # The one regular-season fixture game is Pacers at Knicks (2024-25).
-    assert sorted(coach["name"] for coach in data["coaches"]) == ["Rick Carlisle", "Tom Thibodeau"]
-    assert data["games"] == 1
+    # The regular-season fixture games: Pacers at Knicks and Pacers at Cavaliers (2024-25).
+    assert sorted(coach["name"] for coach in data["coaches"]) == ["Kenny Atkinson", "Rick Carlisle", "Tom Thibodeau"]
+    assert data["games"] == 2
     for coach in data["coaches"]:
         assert 0 < coach["timeouts"]["low"] < coach["timeouts"]["ratio"] < coach["timeouts"]["high"]
         assert 0 < coach["substitutions"]["low"] < coach["substitutions"]["ratio"] < coach["substitutions"]["high"]
@@ -62,12 +62,21 @@ def test_clicking_each_team_shows_the_numbers_the_models_computed(built_page, da
             const text = id => document.getElementById(id)?.querySelector('.headline')?.textContent;
             return {{name: document.querySelector('.coach-head h2').textContent,
                     timeouts: text('timeouts-detail'), substitutions: text('substitutions-detail'),
-                    card: document.getElementById('card').textContent}};"""})
+                    card: document.getElementById('card').textContent,
+                    moves: [...document.querySelectorAll('.move .name')].map(name => name.textContent)}};"""})
     shown = in_chrome(runs, tmp_path)
     for coach, card in zip(data["coaches"], shown):
         assert card["name"] == coach["name"]
         assert card["timeouts"] == more_or_fewer(model_ratio["timeout"][coach["name"]], "timeout calls")
         assert card["substitutions"] == more_or_fewer(model_ratio["substitution"][coach["name"]], "substitutions")
-        # Too little data for these two: the page says so instead of breaking.
-        assert "Not enough close-game stoppages to rank his moves." in card["card"]
+        # The double-overtime game is close at the end; the blowout is not. Each card shows
+        # his ranked moves when the model has them and says so when it does not.
+        model_moves = [move["label"] for move in (coach["likely_moves"] or {}).get("moves", [])]
+        if model_moves:
+            assert card["moves"] == model_moves
+        else:
+            assert "Not enough close-game stoppages to rank his moves." in card["card"]
+        # Too little data for the audit (it needs 100 close games): the page says so instead of breaking.
         assert "Not enough close games to audit his foul-trouble decisions" in card["card"]
+    assert any(coach["likely_moves"] and coach["likely_moves"]["moves"] for coach in data["coaches"])
+    assert not all(coach["likely_moves"] and coach["likely_moves"]["moves"] for coach in data["coaches"])

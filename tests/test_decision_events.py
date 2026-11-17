@@ -1,10 +1,12 @@
 """Checks the SQL pipeline against two hand-checkable playoff games:
 2025 ECF Game 6 (NYK @ IND, 108-125) and 2024 West semis Game 7 (MIN @ DEN, 98-90),
-plus one 2024-25 regular-season NYK-IND game that gives the name matcher a season roster."""
+plus one 2024-25 regular-season NYK-IND game that gives the name matcher a season roster,
+and one double-overtime 2024-25 game (IND @ CLE) for the overtime timeout rules."""
 
 PACERS_KNICKS_GAME_6 = "0042400306"
 WOLVES_NUGGETS_GAME_7 = "0042300237"
 REGULAR_SEASON_KNICKS_PACERS = "0022400081"
+PACERS_CAVALIERS_DOUBLE_OVERTIME = "0022401189"
 
 
 def test_carried_forward_score_matches_final_score(database):
@@ -21,7 +23,7 @@ def test_timeout_counts_per_team(database):
     counts = dict(database.sql(f"""
         SELECT CASE WHEN is_home THEN home_team ELSE away_team END, count(*)
         FROM decision_events JOIN games USING (game_id)
-        WHERE event_type = 'timeout' AND game_id <> '{REGULAR_SEASON_KNICKS_PACERS}'
+        WHERE event_type = 'timeout' AND game_id IN ('{PACERS_KNICKS_GAME_6}', '{WOLVES_NUGGETS_GAME_7}')
         GROUP BY ALL
     """).fetchall())
     assert counts == {"IND": 5, "NYK": 5, "DEN": 6, "MIN": 5}
@@ -278,27 +280,34 @@ def test_head_coach_on_each_bench(database):
     ]
 
 
-def test_fourth_quarter_timeouts_follow_the_limits(database):
-    # Recount usable timeouts for every 4th-quarter play from the timeout events alone:
-    # 7 per game, at most 4 in the 4th, at most 2 after 2:59 (mandatory not counted there).
+def test_timeouts_remaining_follow_the_late_game_limits(database):
+    # Recount usable timeouts for every 4th-quarter and overtime play from the timeout
+    # events alone: 7 per game, at most 4 in the 4th, at most 2 after 2:59 (mandatory not
+    # counted there), and a fresh 2 in each overtime.
     timeouts = database.sql("""
         SELECT game_id, team_id, action_id, period, period_seconds_left, coalesce(likely_mandatory, false) AS mandatory
         FROM decision_events WHERE event_type = 'timeout'
     """).df()
     plays = database.sql("""
-        SELECT game_id, team_id, action_id, period_seconds_left, timeouts_remaining
-        FROM team_state WHERE period = 4
+        SELECT game_id, team_id, action_id, period, period_seconds_left, timeouts_remaining
+        FROM team_state WHERE period >= 4
     """).df()
-    expected, limit_binds = [], 0
+    expected, limit_binds, overtime_used = [], 0, 0
     for play in plays.itertuples():
         before = timeouts[(timeouts.game_id == play.game_id) & (timeouts.team_id == play.team_id)
                           & (timeouts.action_id < play.action_id)]
+        if play.period > 4:
+            used_this_overtime = (before.period == play.period).sum()
+            overtime_used = max(overtime_used, used_this_overtime)
+            expected.append(max(0, 2 - used_this_overtime))
+            continue
         fourth = before[before.period == 4]
         last_three = fourth[(fourth.period_seconds_left < 180) & ~fourth.mandatory]
         limits = [7 - len(before), 4 - len(fourth)] + ([2 - len(last_three)] if play.period_seconds_left < 180 else [])
         expected.append(max(0, min(limits)))
         limit_binds += min(limits) < limits[0]
     assert limit_binds > 0  # the fixtures include plays where a 4th-quarter limit, not the 7, decides
+    assert overtime_used > 0 and (plays["period"] == 6).any()  # a double-overtime game with OT timeouts
     assert (plays["timeouts_remaining"].to_numpy() == expected).all()
 
 
@@ -306,7 +315,7 @@ def test_no_coach_timeout_is_called_with_none_usable(database):
     called_with_none = database.sql("""
         SELECT count(*) FROM decision_state AS s
         JOIN decision_events AS d USING (game_id, action_id)
-        WHERE s.event_type = 'timeout' AND s.period = 4 AND s.timeouts_remaining = 0
+        WHERE s.event_type = 'timeout' AND s.period >= 4 AND s.timeouts_remaining = 0
           AND NOT coalesce(d.likely_mandatory, false)
     """).fetchone()[0]
     assert called_with_none == 0
