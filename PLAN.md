@@ -99,10 +99,9 @@ Phases:
 2. **Game prediction** (classmate feedback, Derek wants it): predict this season's games from the model. Needs its own baseline test (for example the better record wins) before it goes on the page. Head-to-head coach comparison was also suggested.
    Derek's full vision (2026-11-05): enter two teams for an upcoming game, pull injuries and lineups plus history, estimate the winner, and accept Kalshi or Polymarket prices to say whether a bet is worth taking. Agreed caveats: live data needs a backend or a scheduled rebuild; the model must beat market prices after fees on past games before the page calls any bet worth it; the page shows the model's edge and expected value, not how much to stake.
 3. **Build the validation plan below**, starting with the pass-line tests and the end-to-end test. Decide first whether "close game" should include playoffs.
-4. **Season weighting for substitutions: decide** (Derek's call). The benchmark (fit only on seasons before 2025-26, so no current-season games) found it measurably worse for subs, -0.31%; the monthly replay (current-season games added month by month) found +0.11% overall but -0.39% in October, the one month with no current-season games either. So both agree: it hurts until this season's games arrive, then helps. Reason, tested 2026-11-16: substitution season effects carry over (+0.39, slope +0.45) but the model starts each season fresh. Options: keep it (the page's likely-moves card uses a coach's latest season with its games already in), model the drift as carrying over (each season starts from about 45% of last season's deviation), or switch the card to the coach model. Carry-over, benchmarked 2026-11-16, helps subs (+0.14% over season-weighted) but still trails the coach model before a season's games arrive.
-5. **Keep making the models statistically stronger** (Derek, 2026-10-19: the page is not the end). Candidates: a fully Bayesian check on a subsample; whether drift differs by coach; the foul-trouble open questions below.
-6. Foul-trouble audit, open questions: starters may be worth more in close late games; RAPM shrinkage understates starter-over-bench gaps (a box-score prior would help); test Derek's targeting idea directly (do opponents attack a player in foul trouble?).
-7. Timeouts remaining in overtime and the 4th-quarter limits (max 4 in Q4, max 2 after 3:00).
+4. **Keep making the models statistically stronger** (Derek, 2026-10-19: the page is not the end). Candidates: a fully Bayesian check on a subsample; whether drift differs by coach; the foul-trouble open questions below.
+5. Foul-trouble audit, open questions: starters may be worth more in close late games; RAPM shrinkage understates starter-over-bench gaps (a box-score prior would help); test Derek's targeting idea directly (do opponents attack a player in foul trouble?).
+6. Timeouts remaining in overtime and the 4th-quarter limits (max 4 in Q4, max 2 after 3:00).
 
 ## Validation plan
 
@@ -250,6 +249,8 @@ It catches: an old bug coming back when nearby code changes. It misses: bugs nob
 - 2026-10-28: Derek corrected the reporting rule: a gain whose range includes zero is "no measurable difference", not "a help".
 - 2026-11-03: First change from classmate feedback is the team-first picker, before game prediction: every visitor hits the picker, and a non-fan knows "the Lakers", not the coach's name. Current coaches only in the main grid; a coach who moved appears once, under his current team; no search box.
 - 2026-11-03: Tag cutoff of 2 percentage points is Derek's call ("a gap under 2 points ... about the same"); he wants someone who knows basketball to say whether it feels right. Rounded to a tenth of a point so 12% vs 10% counts as exactly 2.
+
+- 2026-11-16: **Keep season weighting for the likely-moves card** (Derek agreed). The card always shows a coach's latest season, whose games are already in the fit, which is where season weighting helps (+0.11% in the monthly replay). It hurts only before a season's games arrive (benchmark -0.31% for subs); carry-over halves that loss but still trails the coach model, so a forecast for a season with no games yet should use the coach model. The page never makes one, so no code changed. Alternatives: carry-over (better than season weighting before games arrive, worse than the coach model), or the coach model everywhere.
 
 ## Problems
 
