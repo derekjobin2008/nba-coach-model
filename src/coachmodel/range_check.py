@@ -42,7 +42,11 @@ from coachmodel.coach_effects import (
 TEST_SEASONS = ["2022-23", "2023-24", "2024-25", "2025-26"]
 METHODS = ["conditional", "joint", "clustered"]
 RESULTS_PATH = REPO_ROOT / "reports" / "range_check.csv"
+PAIRS_PATH = REPO_ROOT / "reports" / "range_check_pairs_{task}.csv"  # one row per coach-season, with z
 MIN_TEST_DECISIONS = 30  # a coach needs this many decisions in the test season to be checked
+# ... and this many games: a game-clustered standard error from very few games is far too
+# small (from one game it is exactly 0, since the fitted effect zeroes that game's residuals).
+MIN_TEST_GAMES = 10
 
 
 def one_season_effect(offset: np.ndarray, labels: np.ndarray, games: np.ndarray) -> tuple[float, float, float]:
@@ -62,6 +66,10 @@ def one_season_effect(offset: np.ndarray, labels: np.ndarray, games: np.ndarray)
     return effect, 1 / np.sqrt(information), np.sqrt(np.sum(per_game ** 2)) / information
 
 
+def enough_to_check(labels: np.ndarray, games: np.ndarray) -> bool:
+    return labels.sum() >= MIN_TEST_DECISIONS and len(np.unique(games)) >= MIN_TEST_GAMES
+
+
 def check_season(rows: pd.DataFrame, task_name: str, test_season: str) -> pd.DataFrame:
     task, taus = TASKS[task_name], CHOSEN_TAUS[task_name]
     seasons = sorted(rows["season"].unique())
@@ -79,11 +87,10 @@ def check_season(rows: pd.DataFrame, task_name: str, test_season: str) -> pd.Dat
     test_without_coach = test_offset + model.effects_for(test, others)
     results = []
     for coach, part in test.groupby("coach_name"):
-        labels = part[task.label].to_numpy()
-        if coach not in model.effects["coach"] or labels.sum() < MIN_TEST_DECISIONS:
+        labels, games = part[task.label].to_numpy(), part["game_id"].to_numpy()
+        if coach not in model.effects["coach"] or not enough_to_check(labels, games):
             continue
-        effect, se_independent, se_clustered = one_season_effect(
-            test_without_coach[part.index], labels, part["game_id"].to_numpy())
+        effect, se_independent, se_clustered = one_season_effect(test_without_coach[part.index], labels, games)
         results.append({
             "season": test_season, "coach": coach, "b_train": model.effects["coach"][coach], "b_test": effect,
             "se_test_independent": se_independent, "se_test_clustered": se_clustered,
@@ -94,11 +101,16 @@ def check_season(rows: pd.DataFrame, task_name: str, test_season: str) -> pd.Dat
     return pd.DataFrame(results)
 
 
-def honesty(pairs: pd.DataFrame, method: str, drift_variance=0.0) -> dict:
-    """drift_variance: one number, or one per row (cross-fitted)."""
+def z_scores(pairs: pd.DataFrame, method: str, drift_variance=0.0) -> pd.Series:
+    """How far each test-season effect landed from the training one, in units of the
+    range's spread. drift_variance: one number, or one per row (cross-fitted)."""
     test_column = "se_test_clustered" if method == "clustered" else "se_test_independent"
     spread = np.sqrt(pairs[f"se_train_{method}"] ** 2 + pairs[test_column] ** 2 + drift_variance)
-    z = (pairs["b_test"] - pairs["b_train"]) / spread
+    return (pairs["b_test"] - pairs["b_train"]) / spread
+
+
+def honesty(pairs: pd.DataFrame, method: str, drift_variance=0.0) -> dict:
+    z = z_scores(pairs, method, drift_variance)
     return {"inside 95% range": float(np.mean(np.abs(z) < 1.96)), "sd of z": float(np.std(z, ddof=1))}
 
 
@@ -140,6 +152,10 @@ def main() -> None:
     print(f"season-to-season drift in a coach's effect: sd {np.sqrt(drift):.3f} log-odds "
           f"(about {np.expm1(np.sqrt(drift)):.0%} in his rate)")
     page_ranges = table.loc["clustered + drift (cross-fitted)"]
+    pairs_path = Path(str(PAIRS_PATH).format(task=args.task))
+    pairs.assign(z=z_scores(pairs, "clustered", cross_fitted_drift(pairs))).to_csv(
+        pairs_path, index=False, float_format="%.5g")
+    print(f"coach-season pairs saved to {pairs_path.relative_to(REPO_ROOT)}")
     pd.DataFrame([{"date": datetime.date.today().isoformat(), "commit": commit_id(), "task": args.task,
                    "coach_seasons": len(pairs), "inside_95_range": page_ranges["inside 95% range"],
                    "sd_of_z": page_ranges["sd of z"], "drift_sd": float(np.sqrt(drift))}]).to_csv(

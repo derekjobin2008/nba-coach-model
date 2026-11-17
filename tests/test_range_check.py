@@ -59,3 +59,18 @@ def test_drift_estimate_recovers_known_season_to_season_change():
     pairs = pd.DataFrame({"b_train": b_train, "b_test": b_test,
                           "se_train_clustered": se_train, "se_test_clustered": se_test})
     assert np.sqrt(drift_variance(pairs)) == pytest.approx(drift_sd, rel=0.15)
+
+
+def test_a_coach_with_one_game_in_the_test_season_is_not_checked():
+    # Regression: Chauncey Billups coached one 2025-26 game. Fitting his effect to one game
+    # makes that game's residuals sum to zero, so its game-clustered standard error is 0,
+    # and his z came out 6.2 and inflated the drift estimate.
+    from coachmodel.range_check import enough_to_check
+    rng = np.random.default_rng(4)
+    offset = rng.normal(-2, 1, 200)
+    labels = (rng.random(200) < 1 / (1 + np.exp(-offset))).astype(int)
+    one_game = np.zeros(200, dtype=int)
+    _, se_independent, se_clustered = one_season_effect(offset, labels, one_game)
+    assert se_clustered < 1e-6 < se_independent  # why the check must skip him
+    assert labels.sum() >= 30 and not enough_to_check(labels, one_game)
+    assert enough_to_check(labels, np.arange(200) // 10)  # 20 games
