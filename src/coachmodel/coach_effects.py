@@ -53,8 +53,8 @@ CHOSEN_TAUS = {
     "substitution": {"coach": 0.1, "stint": 0.1, "player": 0.4},
 }
 # Season-to-season change in a coach's true effect (sd in log-odds), estimated by
-# coachmodel.range_check on 2022-23 to 2025-26.
-SEASON_DRIFT_SD = {"timeout": 0.105, "substitution": 0.176}
+# coachmodel.range_check on 2022-23 to 2025-26 (coaches with 10+ games in a test season).
+SEASON_DRIFT_SD = {"timeout": 0.105, "substitution": 0.145}
 # "season" is a coach's departure from his long-run habit in one season; its spread is
 # SEASON_DRIFT_SD, so it is weighted more as that season's games accumulate.
 LEVEL_COLUMNS = {"coach": "coach_name", "stint": "stint", "player": "person_id", "season": "coach_season"}
