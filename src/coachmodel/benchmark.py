@@ -17,6 +17,9 @@ So that "better" always means the same thing:
     verdict a gain whose 95% range excludes zero is "better" (or "worse"); a range that
             includes zero is "no measurable difference", never "better".
 
+Timeout results before 2026-11-16, when the 4th-quarter timeout limits removed 213
+stoppages that were not decisions, are in reports/benchmark_timeout_before_q4_limits.csv.
+
 Every run appends its rows, with the date and commit, to reports/benchmark.csv, so a
 regression or an improvement shows in the file instead of in someone's summary.
 tests/test_benchmark.py fails if the latest coach model no longer beats the league model.

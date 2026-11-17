@@ -61,9 +61,17 @@ scoring_plays AS (
     WHERE margin_change + opponent_change > 0
 ),
 timeouts AS (
-    SELECT game_id, action_id, team_id, team_timeouts_used
+    -- Running counts as of each timeout (including it), for the 4th-quarter limits: at
+    -- most 4 in the 4th, and at most 2 after its 2:59 mark. In the data the mandatory
+    -- timeout under 2:59 does not count toward the second limit.
+    SELECT
+        game_id, action_id, team_id, team_timeouts_used,
+        count(*) FILTER (WHERE period = 4) OVER running AS used_in_fourth,
+        count(*) FILTER (WHERE period = 4 AND period_seconds_left < 180 AND NOT coalesce(likely_mandatory, false))
+            OVER running AS used_in_last_three
     FROM decision_events
     WHERE event_type = 'timeout'
+    WINDOW running AS (PARTITION BY game_id, team_id ORDER BY action_id)
 ),
 team_rest AS (
     -- Days off before each game, per team: the gap to that team's previous game.
@@ -87,10 +95,15 @@ SELECT
     -- Opponent points since this team last scored ("unanswered run"). Floored at 0:
     -- a basket overturned on review can briefly make the difference negative.
     greatest(t.opponent_score - coalesce(last_own_score.opponent_score, 0), 0) AS opponent_run,
-    -- Regulation allows 7 per team; overtime rules differ, so NULL there. Strictly
-    -- before: a timeout's own row should not count against what it had left.
-    CASE WHEN t.period <= 4
-         THEN 7 - coalesce(timeouts_before.team_timeouts_used, 0) END AS timeouts_remaining,
+    -- Timeouts the team can still use. Regulation allows 7 per team, with the 4th-quarter
+    -- limits above; overtime rules differ, so NULL there. Strictly before: a timeout's
+    -- own row should not count against what it had left.
+    CASE WHEN t.period < 4 THEN 7 - coalesce(timeouts_before.team_timeouts_used, 0)
+         WHEN t.period = 4 THEN greatest(0, least(
+             7 - coalesce(timeouts_before.team_timeouts_used, 0),
+             4 - coalesce(timeouts_before.used_in_fourth, 0),
+             CASE WHEN t.period_seconds_left < 180 THEN 2 - coalesce(timeouts_before.used_in_last_three, 0) ELSE 7 END))
+         END AS timeouts_remaining,
     rest.rest_days
 FROM team_plays AS t
 ASOF LEFT JOIN team_fouls AS own_fouls
