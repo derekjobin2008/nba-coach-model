@@ -12,6 +12,8 @@ So that "better" always means the same thing:
                 coach model        + partially pooled coach and coach-team effects (and
                                    players, for subs): the page's habit numbers
                 season-weighted    + a this-coach-this-season effect: the page's likely moves
+                carry-over         + part of the coach's last season effect carried into the
+                                   new one (an experiment; the slope is fit on training seasons)
     verdict a gain whose 95% range excludes zero is "better" (or "worse"); a range that
             includes zero is "no measurable difference", never "better".
 
@@ -44,7 +46,7 @@ from coachmodel.forecast_check import coach_average_log_odds
 
 TEST_FROM = "2025-10-01"  # frozen: changing it starts a new benchmark, not a new row
 RESULTS_PATH = REPO_ROOT / "reports" / "benchmark.csv"
-LADDER = ["league-wide rate", "coach average", "league model", "coach model", "season-weighted"]
+LADDER = ["league-wide rate", "coach average", "league model", "coach model", "season-weighted", "carry-over"]
 
 
 def verdict(low: float, high: float) -> str:
@@ -54,6 +56,26 @@ def verdict(low: float, high: float) -> str:
     if high < 0:
         return "worse"
     return "no measurable difference"
+
+
+def carry_over_slope(season_effects: dict[str, float]) -> float:
+    """How much of one season's effect shows up in the coach's next season: the slope,
+    through zero, of next season's fitted effect on this season's, over consecutive pairs
+    (0 when no coach has two seasons in a row)."""
+    effects = pd.Series(season_effects)
+    coach, season = effects.index.str.rsplit(" ", n=1).str[0], effects.index.str.rsplit(" ", n=1).str[1]
+    table = pd.DataFrame({"coach": coach, "start": season.str[:4].astype(int), "effect": effects.to_numpy()})
+    pairs = table.merge(table.assign(start=table["start"] - 1), on=["coach", "start"], suffixes=("", "_next"))
+    spread = (pairs["effect"] ** 2).sum()
+    return float((pairs["effect"] * pairs["effect_next"]).sum() / spread) if spread > 0 else 0.0
+
+
+def previous_season_effect(season_effects: dict[str, float], test: pd.DataFrame) -> np.ndarray:
+    """Each test row's coach's effect in the season just before the row's season (0 if he
+    did not coach then)."""
+    start = test["season"].str[:4].astype(int)
+    previous = test["coach_name"] + " " + (start - 1).astype(str) + "-" + (start % 100).map("{:02d}".format)
+    return previous.map(season_effects).fillna(0).to_numpy()
 
 
 def ladder_log_odds(train: pd.DataFrame, test: pd.DataFrame, task_name: str) -> dict[str, np.ndarray]:
@@ -71,6 +93,9 @@ def ladder_log_odds(train: pd.DataFrame, test: pd.DataFrame, task_name: str) -> 
         columns = {level: LEVEL_COLUMNS[level] for level in taus}
         effects = GroupEffects(train, columns).fit(train_offset, train[label].to_numpy(), train, taus)
         predictions[name] = league + effects.effects_for(test)
+    season_effects = effects.effects["season"]
+    predictions["carry-over"] = (predictions["season-weighted"]
+                                 + carry_over_slope(season_effects) * previous_season_effect(season_effects, test))
     return predictions
 
 

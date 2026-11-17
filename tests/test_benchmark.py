@@ -5,7 +5,9 @@ import pandas as pd
 import pytest
 
 from coachmodel.baseline import TASKS, split_by_date
-from coachmodel.benchmark import LADDER, RESULTS_PATH, TEST_FROM, ladder_log_odds, score_ladder, verdict
+from coachmodel.benchmark import (
+    LADDER, RESULTS_PATH, TEST_FROM, carry_over_slope, ladder_log_odds, previous_season_effect, score_ladder, verdict,
+)
 from coachmodel.coach_effects import load_task_rows
 
 
@@ -29,12 +31,19 @@ def test_a_model_that_knows_more_is_better_and_a_copy_is_no_different():
     flat = np.full(len(test), np.log(test["called_timeout"].mean() / (1 - test["called_timeout"].mean())))
     noisy = true_log_odds + rng.normal(0, 1.0, len(test))
     predictions = {"league-wide rate": flat, "coach average": flat, "league model": noisy,
-                   "coach model": true_log_odds, "season-weighted": true_log_odds}
+                   "coach model": true_log_odds, "season-weighted": true_log_odds, "carry-over": true_log_odds}
     table = score_ladder(test, predictions, "called_timeout", np.random.default_rng(0)).set_index("model")
     assert list(table.index) == LADDER
     assert table.loc["coach model", "verdict"] == "better"  # the truth beats a noisy guess
     assert table.loc["season-weighted", "verdict"] == "no measurable difference"  # an exact copy
     assert table.loc["coach average", "gain"] == 0
+
+
+def test_carry_over_reads_last_seasons_effect_and_its_slope():
+    effects = {"A 2023-24": 0.2, "A 2024-25": 0.1, "B 2023-24": -0.4, "B 2024-25": -0.2, "C 2022-23": 0.3}
+    assert carry_over_slope(effects) == pytest.approx(0.5)  # C has no next season, so no pair
+    test = pd.DataFrame({"coach_name": ["A", "B", "C"], "season": ["2025-26", "2024-25", "2025-26"]})
+    assert list(previous_season_effect(effects, test)) == [0.1, -0.4, 0.0]  # C skipped a season
 
 
 def test_every_rung_fits_and_predicts_on_the_fixture_games(database):
